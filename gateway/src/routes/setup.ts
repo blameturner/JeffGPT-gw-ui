@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../auth.js';
-import { countActive, createRow } from '../nocodb.js';
+import { countActive, createRow } from '../services/nocodb/index.js';
 
 export const setupRoute = new Hono();
 

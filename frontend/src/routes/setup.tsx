@@ -1,13 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { api } from '../lib/api';
-
-function slugify(s: string) {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+import { FormInput } from '../components/FormInput';
+import { slugify } from '../utils/slugify';
 
 function SetupPage() {
   const navigate = useNavigate();
@@ -43,44 +38,45 @@ function SetupPage() {
         <p className="text-muted mb-8">Create your organisation to get started.</p>
 
         <form onSubmit={onSubmit} className="space-y-4">
-          <Field label="Organisation name">
-            <input
-              className="input"
-              value={orgName}
-              onChange={(e) => {
-                setOrgName(e.target.value);
-                if (!slugDirty) setSlug(slugify(e.target.value));
-              }}
-              required
-            />
-          </Field>
-          <Field label="Slug">
-            <input
-              className="input"
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value);
-                setSlugDirty(true);
-              }}
-              required
-            />
-          </Field>
-          <Field label="Your name">
-            <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-          </Field>
-          <Field label="Email">
-            <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </Field>
-          <Field label="Password">
-            <input
-              className="input"
-              type="password"
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </Field>
+          <FormInput
+            label="Organisation name"
+            value={orgName}
+            onChange={(e) => {
+              setOrgName(e.target.value);
+              if (!slugDirty) setSlug(slugify(e.target.value));
+            }}
+            required
+          />
+          <FormInput
+            label="Slug"
+            value={slug}
+            onChange={(e) => {
+              setSlug(e.target.value);
+              setSlugDirty(true);
+            }}
+            required
+          />
+          <FormInput
+            label="Your name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            required
+          />
+          <FormInput
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <FormInput
+            label="Password"
+            type="password"
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
@@ -93,28 +89,7 @@ function SetupPage() {
           </button>
         </form>
       </div>
-      <style>{`
-        .input {
-          width: 100%;
-          background: #242424;
-          border: 1px solid #333;
-          padding: 0.55rem 0.75rem;
-          border-radius: 0.375rem;
-          color: #e7e5e4;
-          outline: none;
-        }
-        .input:focus { border-color: #f59e0b; }
-      `}</style>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-sm text-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }
 

@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { env } from './env.js';
-import { countActive, createRow, listWhere } from './nocodb.js';
+import { countActive, createRow, listWhere } from './services/nocodb/index.js';
 
 // Resolve file:... DATABASE_URL to a path and ensure its directory exists.
 const dbPath = env.DATABASE_URL.replace(/^file:/, '');
@@ -42,7 +42,7 @@ async function attachToExistingOrg(email: string, displayName?: string): Promise
 export const authOptions: BetterAuthOptions = {
   database: sqlite,
   secret: env.BETTER_AUTH_SECRET,
-  baseURL: env.BETTER_AUTH_URL,
+  baseURL: env.GATEWAY_URL,
   emailAndPassword: {
     enabled: true,
     autoSignIn: false,

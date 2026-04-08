@@ -23,7 +23,7 @@ runRoute.post('/', async (c) => {
 
   const { orgId } = getAuthContext(c);
   // org_id is injected from the session — the frontend never supplies it.
-  const payload = { ...parsed.data, org_id: Number(orgId) };
+  const payload = { ...parsed.data, org_id: orgId };
 
   try {
     const res = await harnessRun(payload);

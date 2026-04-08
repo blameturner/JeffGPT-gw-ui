@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { authClient } from '../lib/auth-client';
+import { FormInput } from '../components/FormInput';
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -29,26 +30,20 @@ function LoginPage() {
           <span className="text-accent">JeffGPT</span>
         </h1>
         <form onSubmit={onSubmit} className="space-y-4">
-          <label className="block">
-            <span className="block text-sm text-muted mb-1">Email</span>
-            <input
-              className="w-full bg-panel border border-border px-3 py-2 rounded focus:border-accent outline-none"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm text-muted mb-1">Password</span>
-            <input
-              className="w-full bg-panel border border-border px-3 py-2 rounded focus:border-accent outline-none"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </label>
+          <FormInput
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <FormInput
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
           {error && <p className="text-red-400 text-sm">{error}</p>}
           <button
             type="submit"

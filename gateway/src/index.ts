@@ -5,8 +5,8 @@ import { logger } from 'hono/logger';
 import { getMigrations } from 'better-auth/db/migration';
 import { env } from './env.js';
 import { auth, authOptions } from './auth.js';
-import { initNocodbTables } from './nocodb.js';
-import type { Variables } from './types.js';
+import { initNocodbTables } from './services/nocodb/index.js';
+import type { AuthVariables } from './types/auth.js';
 import { setupRoute } from './routes/setup.js';
 import { modelsRoute } from './routes/models.js';
 import { workersRoute } from './routes/workers.js';
@@ -14,7 +14,7 @@ import { runRoute } from './routes/run.js';
 import { orgRoute } from './routes/org.js';
 import { healthRoute } from './routes/health.js';
 
-const app = new Hono<{ Variables: Variables }>();
+const app = new Hono<{ Variables: AuthVariables }>();
 
 app.use('*', logger());
 app.use(

@@ -1,14 +1,11 @@
 {
-  "name": "mst-harness-ui",
-  "version": "1.0.0",
-  "description": "",
-  "main": "dist/index.js",
+  "name": "mst-ag",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["gateway", "frontend"],
   "scripts": {
-    "build": "tsc"
-  },
-  "dependencies": {},
-  "devDependencies": {
-    "typescript": "^5.5.3"
-  },
-  "private": true
+    "dev:gateway": "npm -w gateway run dev",
+    "dev:frontend": "npm -w frontend run dev",
+    "build": "npm -w gateway run build && npm -w frontend run build"
+  }
 }

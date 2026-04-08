@@ -7,5 +7,15 @@ yarn-debug.log*
 yarn-error.log*
 /.pnp
 .pnp.js
+.idea
+
 
 .vscode/*
+
+.env
+.env.local
+
+*/node_modules
+*/dist
+
+*/.tanstack

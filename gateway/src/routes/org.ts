@@ -18,7 +18,7 @@ orgRoute.get('/me', async (c) => {
     return c.json({ error: 'invalid_session' }, 400);
   }
   const orgs = await listWhere<Record<string, unknown>>(
-    'organisations',
+    'organisation',
     `(Id,eq,${safeOrgId})`,
     1,
   );

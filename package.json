@@ -6,6 +6,9 @@
   "scripts": {
     "dev:gateway": "npm -w gateway run dev",
     "dev:frontend": "npm -w frontend run dev",
-    "build": "npm -w gateway run build && npm -w frontend run build"
+    "build": "npm -w gateway run build && npm -w frontend run build",
+    "publish:gateway": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/blameturner/mst-ag-gateway:latest ./gateway --push",
+    "publish:frontend": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/blameturner/mst-ag-frontend:latest ./frontend --push",
+    "publish": "npm run publish:gateway && npm run publish:frontend"
   }
 }

@@ -11,6 +11,8 @@ import { setupRoute } from './routes/setup.js';
 import { modelsRoute } from './routes/models.js';
 import { workersRoute } from './routes/workers.js';
 import { runRoute } from './routes/run.js';
+import { chatRoute } from './routes/chat.js';
+import { conversationsRoute } from './routes/conversations.js';
 import { orgRoute } from './routes/org.js';
 import { healthRoute } from './routes/health.js';
 import { rateLimit } from './middleware/rateLimit.js';
@@ -46,6 +48,8 @@ app.route('/api/setup', setupRoute);
 app.route('/api/models', modelsRoute);
 app.route('/api/workers', workersRoute);
 app.route('/api/run', runRoute);
+app.route('/api/chat', chatRoute);
+app.route('/api/conversations', conversationsRoute);
 app.route('/api/org', orgRoute);
 app.route('/api/health', healthRoute);
 

@@ -25,7 +25,7 @@ async function attachToExistingOrg(email: string, displayName?: string): Promise
   if (!isValidEmail(email)) {
     throw new Error('Invalid email');
   }
-  const orgs = await listWhere<OrgRow>('organisations', '', 1);
+  const orgs = await listWhere<OrgRow>('organisation', '', 1);
   if (orgs.length === 0) {
     throw new Error('No organisation exists — run /api/setup first');
   }
@@ -85,7 +85,7 @@ export const authOptions: BetterAuthOptions = {
           // First-run setup path uses auth.api.signUpEmail with a marker we can check via
           // an existing org count: if zero orgs exist, allow signup (setup route pre-created it).
           if (!env.ALLOW_REGISTRATION) {
-            const count = await countActive('organisations');
+            const count = await countActive('organisation');
             if (count > 0) {
               throw new Error('registration_disabled');
             }
@@ -123,4 +123,13 @@ export async function getOrgIdForUser(userId: string): Promise<number | null> {
     | { orgId: number | null }
     | undefined;
   return row?.orgId ?? null;
+}
+
+/** Number of Better Auth user rows in SQLite. Used by /api/setup/status so
+ *  the frontend only treats the system as "configured" once an auth user
+ *  actually exists (not merely when a NocoDB organisation row has been
+ *  pre-seeded). */
+export function countAuthUsers(): number {
+  const row = sqlite.prepare('SELECT COUNT(*) as c FROM user').get() as { c: number };
+  return row?.c ?? 0;
 }

@@ -4,27 +4,45 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: '#1a1a1a',
-        panel: '#242424',
-        panelHi: '#2d2d2d',
-        border: '#333333',
-        accent: '#f59e0b',
-        accentDim: '#b26f06',
-        text: '#e7e5e4',
-        muted: '#9ca3af',
+        // Editorial black-on-white. White dominant, near-black ink for text,
+        // a hairline grey for borders, and a single warm off-white for panels.
+        bg: '#ffffff',
+        panel: '#fafaf9',       // subtle off-white for sidebars and cards
+        panelHi: '#f4f4f2',     // hover/active state for list rows
+        fg: '#0a0a0a',          // near-black ink
+        muted: '#6b6b6b',       // secondary text / timestamps
+        border: '#e6e6e4',      // hairline dividers
+        accent: '#0a0a0a',      // monochrome accent — the ink itself is the pop
+        // Legacy aliases so older components compile until migrated.
+        text: '#0a0a0a',
+        accentDim: '#3a3a3a',
       },
       fontFamily: {
-        display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        // Distinctive editorial pairing — no Inter, no system defaults.
+        display: ['"Fraunces"', 'Georgia', 'serif'],
+        sans: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+      },
+      letterSpacing: {
+        tightest: '-0.04em',
+      },
+      boxShadow: {
+        card: '0 1px 0 0 rgba(10, 10, 10, 0.04), 0 0 0 1px rgba(10, 10, 10, 0.06)',
+        hover: '0 1px 0 0 rgba(10, 10, 10, 0.08), 0 4px 16px -4px rgba(10, 10, 10, 0.08)',
       },
       keyframes: {
         fadeIn: {
-          '0%': { opacity: '0', transform: 'translateY(4px)' },
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        blink: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0' },
         },
       },
       animation: {
-        fadeIn: 'fadeIn 180ms ease-out',
+        fadeIn: 'fadeIn 220ms ease-out',
+        blink: 'blink 1.1s infinite',
       },
     },
   },

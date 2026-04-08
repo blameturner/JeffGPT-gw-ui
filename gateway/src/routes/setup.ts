@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { auth } from '../auth.js';
+import { auth, countAuthUsers } from '../auth.js';
 import { countActive, createRow, deleteRow, listWhere } from '../services/nocodb/index.js';
 import { escapeNocoFilter } from '../lib/noco-filter.js';
 
@@ -18,12 +18,18 @@ function withSetupLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 setupRoute.get('/status', async (c) => {
+  // Configured means: at least one Better Auth user exists. A NocoDB org row
+  // alone is not enough (it may have been pre-seeded manually). This is what
+  // the frontend uses to decide whether /setup or /login is the landing page.
   try {
-    const count = await countActive('organisations');
-    return c.json({ configured: count > 0 });
+    const authUsers = countAuthUsers();
+    if (authUsers > 0) return c.json({ configured: true });
+    // No auth user yet — but check the org table anyway so the status endpoint
+    // can still report on NocoDB health. If NocoDB is down this will throw.
+    await countActive('organisation');
+    return c.json({ configured: false });
   } catch (err) {
     console.error('[setup/status]', err);
-    // Intentionally generic — do not reveal NocoDB reachability to unauth callers.
     return c.json({ configured: false }, 503);
   }
 });
@@ -42,7 +48,7 @@ setupRoute.post('/', async (c) => {
   if (!parsed.success) return c.json({ error: 'invalid_body', issues: parsed.error.issues }, 400);
 
   return withSetupLock(async () => {
-    const existing = await countActive('organisations');
+    const existing = await countActive('organisation');
     if (existing > 0) return c.json({ error: 'already_configured' }, 409);
 
     const { orgName, slug, email, password, displayName } = parsed.data;
@@ -54,10 +60,9 @@ setupRoute.post('/', async (c) => {
     let userRowId: number | string | null = null;
 
     try {
-      const org = await createRow<{ Id: number }>('organisations', {
+      const org = await createRow<{ Id: number }>('organisation', {
         name: orgName,
         slug,
-        plan: 'solo',
         settings: {},
       });
       orgId = org.Id;
@@ -100,7 +105,7 @@ setupRoute.post('/', async (c) => {
       }
       if (orgId != null) {
         try {
-          await deleteRow('organisations', orgId);
+          await deleteRow('organisation', orgId);
         } catch (rbErr) {
           console.error('[setup] rollback org delete failed', rbErr);
         }

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { FormInput } from '../components/FormInput';
@@ -51,14 +51,23 @@ function SetupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6">
+    <div className="min-h-screen flex items-center justify-center px-6 bg-bg">
       <div className="w-full max-w-md">
-        <h1 className="font-display text-3xl font-bold mb-1">
-          Welcome to <span className="text-accent">JeffGPT</span>
+        <p className="text-[10px] uppercase tracking-[0.22em] text-muted mb-3 font-mono">
+          · First run ·
+        </p>
+        <h1 className="font-display text-5xl font-semibold tracking-tightest leading-none mb-3">
+          Jeff<span className="italic">GPT</span>
         </h1>
-        <p className="text-muted mb-8">Create your organisation to get started.</p>
+        <p className="text-muted mb-1">Create your organisation to get started.</p>
+        <p className="text-muted text-xs mb-8 font-mono">
+          Already have an account?{' '}
+          <Link to="/login" className="text-fg hover:underline underline-offset-4">
+            Sign in
+          </Link>
+        </p>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-5">
           <FormInput
             label="Organisation name"
             value={orgName}
@@ -99,12 +108,12 @@ function SetupPage() {
             required
           />
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && <p className="text-red-600 text-xs font-mono">{error}</p>}
 
           <button
             type="submit"
             disabled={busy}
-            className="w-full bg-accent text-bg font-semibold py-2.5 rounded-md hover:bg-amber-400 transition disabled:opacity-50"
+            className="w-full bg-fg text-bg font-medium tracking-wide py-3 rounded-md hover:bg-fg/85 transition-colors disabled:opacity-50"
           >
             {busy ? 'Creating…' : 'Create organisation'}
           </button>
@@ -114,4 +123,18 @@ function SetupPage() {
   );
 }
 
-export const Route = createFileRoute('/setup')({ component: SetupPage });
+export const Route = createFileRoute('/setup')({
+  beforeLoad: async () => {
+    let status: { configured: boolean };
+    try {
+      status = await api.setupStatus();
+    } catch {
+      // Gateway unreachable — render the setup page and let the user try.
+      return;
+    }
+    if (status.configured) {
+      throw redirect({ to: '/login' });
+    }
+  },
+  component: SetupPage,
+});

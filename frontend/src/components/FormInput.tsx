@@ -4,13 +4,19 @@ interface FormInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label: ReactNode;
 }
 
-export function FormInput({ label, ...inputProps }: FormInputProps) {
+export function FormInput({ label, className, ...inputProps }: FormInputProps) {
   return (
     <label className="block">
-      <span className="block text-sm text-muted mb-1">{label}</span>
+      <span className="block text-[10px] uppercase tracking-[0.16em] text-muted mb-1.5 font-mono">
+        {label}
+      </span>
       <input
         {...inputProps}
-        className="w-full bg-panel border border-border px-3 py-2 rounded focus:border-accent outline-none"
+        className={[
+          'w-full bg-bg border border-border rounded-md px-3 py-2.5 text-[15px]',
+          'placeholder:text-muted focus:outline-none focus:border-fg transition-colors',
+          className ?? '',
+        ].join(' ')}
       />
     </label>
   );

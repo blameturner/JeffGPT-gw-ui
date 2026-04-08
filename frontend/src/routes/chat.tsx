@@ -16,6 +16,8 @@ type DisplayMessage = {
   role: 'user' | 'assistant';
   content: string;
   pending?: boolean;
+  /** If the harness returned context_chars > 0 on this turn, show it as a badge. */
+  contextChars?: number;
 };
 
 
@@ -43,6 +45,10 @@ function ChatPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Memory (RAG) — only applied on the first message of a NEW conversation.
+  // Once the conversation exists on the harness, its rag setting is sticky
+  // and this flag is ignored.
+  const [ragEnabled, setRagEnabled] = useState(false);
 
   // Stats panel — manual refresh only. Calls the harness summary endpoint
   // via the gateway; the panel is rendered inside the sidebar, and a full
@@ -137,6 +143,7 @@ function ChatPage() {
     setMessages([]);
     setError(null);
     setStats(null);
+    setRagEnabled(false);
     textareaRef.current?.focus();
   }
 
@@ -157,15 +164,25 @@ function ChatPage() {
     setError(null);
 
     try {
+      // rag_enabled only goes out on the first message of a new chat. The
+      // harness persists the setting on the conversations row and ignores it
+      // on subsequent turns.
+      const isFirstMessage = activeId == null;
       const res = await api.chat({
         model,
         message: text,
         conversation_id: activeId ?? undefined,
+        ...(isFirstMessage && ragEnabled ? { rag_enabled: true } : {}),
       });
       setMessages((m) =>
         m
           .filter((x) => x.id !== pendingMsg.id)
-          .concat({ id: uid(), role: 'assistant', content: res.output }),
+          .concat({
+            id: uid(),
+            role: 'assistant',
+            content: res.output,
+            contextChars: res.context_chars && res.context_chars > 0 ? res.context_chars : undefined,
+          }),
       );
       // First message in a brand-new conversation — capture the returned id
       // and refresh the sidebar so it appears.
@@ -596,7 +613,16 @@ function ChatPage() {
               </div>
             ) : (
               messages.map((m) => (
-                <ChatBubble key={m.id} message={m} pending={m.pending} />
+                <div key={m.id} className="space-y-1">
+                  <ChatBubble message={m} pending={m.pending} />
+                  {m.role === 'assistant' && m.contextChars != null && (
+                    <div className="flex justify-start">
+                      <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted pl-5">
+                        Memory · {m.contextChars.toLocaleString()} chars of context
+                      </span>
+                    </div>
+                  )}
+                </div>
               ))
             )}
           </div>
@@ -637,9 +663,36 @@ function ChatPage() {
                 {sending ? '…' : 'Send'}
               </button>
             </div>
-            <p className="text-[10px] uppercase tracking-[0.14em] text-muted mt-2 font-mono">
-              Enter to send · Shift+Enter for newline
-            </p>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-muted font-mono">
+                Enter to send · Shift+Enter for newline
+              </p>
+              {/*
+                Memory toggle — only meaningful on the first message of a new
+                conversation. Once activeId is set, the conversation's RAG
+                setting is sticky on the harness side and we disable the toggle.
+              */}
+              <button
+                type="button"
+                onClick={() => setRagEnabled((v) => !v)}
+                disabled={activeId != null}
+                title={
+                  activeId != null
+                    ? 'Memory is set when a conversation is first created'
+                    : 'Use past conversations as context'
+                }
+                className={[
+                  'text-[10px] uppercase tracking-[0.14em] font-mono px-2.5 py-1 rounded-full border transition-colors',
+                  activeId != null
+                    ? 'border-border text-muted opacity-50 cursor-not-allowed'
+                    : ragEnabled
+                      ? 'border-fg bg-fg text-bg'
+                      : 'border-border text-muted hover:border-fg hover:text-fg',
+                ].join(' ')}
+              >
+                {ragEnabled ? '● Memory on' : '○ Memory off'}
+              </button>
+            </div>
           </div>
         </div>
       </main>

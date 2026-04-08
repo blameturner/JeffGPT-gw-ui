@@ -13,4 +13,6 @@ export interface HarnessChatRequest {
   system?: string | null;
   temperature?: number;
   max_tokens?: number;
+  rag_enabled?: boolean;
+  rag_collection?: string | null;
 }

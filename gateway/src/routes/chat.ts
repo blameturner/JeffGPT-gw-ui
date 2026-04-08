@@ -17,6 +17,9 @@ const chatSchema = z.object({
   system: z.string().optional().nullable(),
   temperature: z.number().min(0).max(2).optional(),
   max_tokens: z.number().int().positive().max(32_000).optional(),
+  // Only used on the first message of a new conversation.
+  rag_enabled: z.boolean().optional(),
+  rag_collection: z.string().optional().nullable(),
 });
 
 chatRoute.post('/', async (c) => {

@@ -41,6 +41,10 @@ export interface Worker {
 export interface LlmModel {
   name: string;
   url: string;
+  /** Human-facing role label from the harness catalog (may equal name). */
+  role?: string;
+  /** Upstream provider model id, e.g. "gemma-4-e4b-it". */
+  model_id?: string;
 }
 
 export interface Conversation {
@@ -73,6 +77,10 @@ export interface ChatResponse {
   tokens_input: number;
   tokens_output: number;
   duration_seconds: number;
+  /** Non-zero when RAG memory was used on this turn (harness-side). */
+  context_chars?: number;
+  /** Echoes the conversation's persistent RAG setting. */
+  rag_enabled?: boolean;
 }
 
 export interface ConversationSummary {
@@ -179,5 +187,7 @@ export const api = {
     system?: string | null;
     temperature?: number;
     max_tokens?: number;
+    rag_enabled?: boolean;
+    rag_collection?: string | null;
   }) => http.post('api/chat', { json: body }).json<ChatResponse>(),
 };

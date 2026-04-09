@@ -6,7 +6,6 @@ import { FetchTimeoutError } from '../lib/fetch-with-timeout.js';
 import {
   code as harnessCode,
   listCodeConversations,
-  getCodeConversation,
   getCodeConversationMessages,
   getCodeWorkspace,
   updateCodeConversation,
@@ -56,16 +55,41 @@ function mapHarnessError(err: unknown) {
   });
 }
 
-async function ensureOwnedCodeConversation(
+interface HarnessCodeConversation {
+  Id?: number;
+  id?: number;
+  org_id?: number;
+  model?: string;
+  title?: string;
+  rag_collection?: string | null;
+}
+
+/**
+ * Confirm that `conversationId` belongs to `orgId` by looking it up in the
+ * harness's list endpoint (the only one we can rely on: the singular
+ * `/code/conversations/{id}` either doesn't exist on the harness or returns
+ * an unwrapped shape that breaks ownership checks). The list is already
+ * filtered server-side by `org_id`, so a hit there is authoritative.
+ *
+ * Returns the conversation row on success so callers can reuse it (handy
+ * for the plain GET /conversations/:id endpoint).
+ */
+async function findOwnedCodeConversation(
   conversationId: number,
   orgId: number,
-): Promise<{ ok: true } | { ok: false; response: Response }> {
-  const existing = await getCodeConversation(conversationId);
-  if (!existing.ok) return { ok: false, response: await forward(existing) };
-  const body = (await existing.json()) as {
-    conversation?: { org_id?: number } | null;
+): Promise<
+  | { ok: true; conversation: HarnessCodeConversation }
+  | { ok: false; response: Response }
+> {
+  const listRes = await listCodeConversations(orgId);
+  if (!listRes.ok) return { ok: false, response: await forward(listRes) };
+  const body = (await listRes.json()) as {
+    conversations?: HarnessCodeConversation[];
   };
-  if (!body.conversation || Number(body.conversation.org_id) !== Number(orgId)) {
+  const hit = (body.conversations ?? []).find(
+    (c) => Number(c.Id ?? c.id) === Number(conversationId),
+  );
+  if (!hit || Number(hit.org_id) !== Number(orgId)) {
     return {
       ok: false,
       response: new Response(JSON.stringify({ error: 'not_found' }), {
@@ -74,7 +98,7 @@ async function ensureOwnedCodeConversation(
       }),
     };
   }
-  return { ok: true };
+  return { ok: true, conversation: hit };
 }
 
 codeRoute.get('/conversations', async (c) => {
@@ -96,13 +120,9 @@ codeRoute.get('/conversations/:id', async (c) => {
     return c.json({ error: 'invalid_id' }, 400);
   }
   try {
-    const res = await getCodeConversation(conversationId);
-    if (!res.ok) return forward(res);
-    const body = (await res.json()) as { conversation?: { org_id?: number } | null };
-    if (!body.conversation || Number(body.conversation.org_id) !== Number(orgId)) {
-      return c.json({ error: 'not_found' }, 404);
-    }
-    return c.json(body);
+    const owned = await findOwnedCodeConversation(conversationId, Number(orgId));
+    if (!owned.ok) return owned.response;
+    return c.json({ conversation: owned.conversation });
   } catch (err) {
     return mapHarnessError(err);
   }
@@ -117,7 +137,7 @@ codeRoute.get('/conversations/:id/messages', async (c) => {
     return c.json({ error: 'invalid_id' }, 400);
   }
   try {
-    const owned = await ensureOwnedCodeConversation(conversationId, Number(orgId));
+    const owned = await findOwnedCodeConversation(conversationId, Number(orgId));
     if (!owned.ok) return owned.response;
     const res = await getCodeConversationMessages(conversationId);
     return forward(res);
@@ -135,7 +155,7 @@ codeRoute.get('/conversations/:id/workspace', async (c) => {
     return c.json({ error: 'invalid_id' }, 400);
   }
   try {
-    const owned = await ensureOwnedCodeConversation(conversationId, Number(orgId));
+    const owned = await findOwnedCodeConversation(conversationId, Number(orgId));
     if (!owned.ok) return owned.response;
     const res = await getCodeWorkspace(conversationId);
     return forward(res);
@@ -162,7 +182,7 @@ codeRoute.patch('/conversations/:id', async (c) => {
     return c.json({ error: 'invalid_body', issues: parsed.error.issues }, 400);
   }
   try {
-    const owned = await ensureOwnedCodeConversation(conversationId, Number(orgId));
+    const owned = await findOwnedCodeConversation(conversationId, Number(orgId));
     if (!owned.ok) return owned.response;
     const res = await updateCodeConversation(conversationId, parsed.data);
     return forward(res);

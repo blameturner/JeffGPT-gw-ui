@@ -21,6 +21,11 @@ import { authClient } from '../lib/auth-client';
 import { ComposerDock } from '../components/ComposerDock';
 import { Sheet, IconButton } from '../components/Sheet';
 import { styleLabel } from '../lib/styles';
+import {
+  isTransientNetworkError,
+  useOnVisibilityResume,
+  useWasRecentlyHidden,
+} from '../lib/network';
 
 type Mode = 'plan' | 'execute' | 'debug';
 
@@ -32,6 +37,14 @@ interface CodeMessage {
   status: 'complete' | 'streaming' | 'error';
   errorMessage?: string;
   responseStyle?: string | null;
+  /** Captured user text — used by Retry so an interrupted send can
+   *  re-dispatch without asking the user to retype. */
+  sourceUserText?: string;
+  /** Mode the send was dispatched with — survives mode switches between
+   *  retry attempts so a failed Execute turn retries as Execute. */
+  sourceMode?: Mode;
+  /** Approved plan that was injected on the original send, if any. */
+  sourceApprovedPlan?: string | null;
 }
 
 interface AttachedFile {
@@ -348,6 +361,8 @@ function CodePage() {
   const [railSheetOpen, setRailSheetOpen] = useState(false);
 
   const streamAbortRef = useRef<AbortController | null>(null);
+  const vis = useWasRecentlyHidden();
+  const bootOkRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -360,13 +375,15 @@ function CodePage() {
         ]);
         if (cancelled) return;
         setModels(res.models);
-        if (res.models[0]) setModel(res.models[0].name);
+        if (res.models[0]) setModel((prev) => prev || res.models[0].name);
         if (stylesRes?.code) {
           setCodeStyles(stylesRes.code);
           setStyleKey((prev) => prev || stylesRes.code!.default);
         }
+        bootOkRef.current = true;
       } catch (err) {
         if (cancelled) return;
+        if (isTransientNetworkError(err)) return;
         setError((err as Error)?.message ?? 'Failed to load models');
       }
     })();
@@ -374,6 +391,34 @@ function CodePage() {
       cancelled = true;
     };
   }, []);
+
+  // Retry models + sessions load when the page returns from background
+  // if the first attempt was killed by an iOS suspend.
+  useOnVisibilityResume(() => {
+    if (!bootOkRef.current) {
+      void (async () => {
+        try {
+          const [res, stylesRes] = await Promise.all([
+            api.models(),
+            api.styles('code').catch(() => null),
+          ]);
+          setModels(res.models);
+          setModel((prev) => prev || res.models[0]?.name || '');
+          if (stylesRes?.code) {
+            setCodeStyles(stylesRes.code);
+            setStyleKey((prev) => prev || stylesRes.code!.default);
+          }
+          bootOkRef.current = true;
+          setError(null);
+        } catch {
+          /* try again next resume */
+        }
+      })();
+    }
+    // Always re-pull the sessions list on resume — cheap and keeps the
+    // sidebar fresh if another device created a session in the meantime.
+    void refreshSessions();
+  });
 
   const refreshSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -546,6 +591,9 @@ function CodePage() {
       content: '',
       status: 'streaming',
       responseStyle: styleKey || null,
+      sourceUserText: text,
+      sourceMode: effectiveMode,
+      sourceApprovedPlan: effectiveApproved,
     };
     setMessages((m) => [...m, userMsg, pendingMsg]);
     if (!forcedText) setInput('');
@@ -613,7 +661,9 @@ function CodePage() {
       }
     } catch (err) {
       const aborted = (err as Error)?.name === 'AbortError';
-      if (!aborted) {
+      const transient =
+        isTransientNetworkError(err) && (vis.isHidden() || vis.justResumed());
+      if (!aborted && !transient) {
         const msg = (err as Error)?.message ?? 'Send failed';
         setMessages((ms) =>
           ms.map((x) =>
@@ -621,12 +671,32 @@ function CodePage() {
           ),
         );
         setError(msg);
+      } else if (transient) {
+        setMessages((ms) => ms.filter((x) => x.id !== pendingId));
       }
     } finally {
       if (streamAbortRef.current === controller) streamAbortRef.current = null;
       setSending(false);
       void refreshSessions();
     }
+  }
+
+  function retryMessage(m: CodeMessage) {
+    if (!m.sourceUserText) return;
+    // Drop the errored assistant bubble + its preceding user bubble
+    // so send() can append a fresh pair.
+    setMessages((ms) => {
+      const idx = ms.findIndex((x) => x.id === m.id);
+      if (idx <= 0) return ms.filter((x) => x.id !== m.id);
+      const prev = ms[idx - 1];
+      const toDrop = new Set([m.id]);
+      if (prev?.role === 'user') toDrop.add(prev.id);
+      return ms.filter((x) => !toDrop.has(x.id));
+    });
+    void send(m.sourceUserText, {
+      overrideMode: m.sourceMode,
+      overrideApprovedPlan: m.sourceApprovedPlan,
+    });
   }
 
   function applyAll(blocks: CodeBlock[]) {
@@ -854,9 +924,20 @@ function CodePage() {
                     {m.role === 'user' ? (
                       m.content
                     ) : m.status === 'error' ? (
-                      <span className="text-red-600 font-sans text-[12px]">
-                        {m.errorMessage || 'Request failed'}
-                      </span>
+                      <div className="text-red-600 font-sans text-[12px]">
+                        <p className="break-words">
+                          {m.errorMessage || 'Request failed'}
+                        </p>
+                        {m.sourceUserText && (
+                          <button
+                            type="button"
+                            onClick={() => retryMessage(m)}
+                            className="mt-2 text-[10px] uppercase tracking-[0.14em] font-sans border border-red-600/60 text-red-600 px-2.5 py-1 rounded hover:bg-red-600 hover:text-bg transition-colors"
+                          >
+                            ↻ Retry
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <>
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>

@@ -23,10 +23,16 @@ export interface DisplayMessage {
    *  Rendered as a tiny badge next to the tokens footer so the user can see
    *  which preset produced each reply when styles change mid-conversation. */
   responseStyle?: string | null;
+  /** Captured user text for this turn — used by the Retry button so an
+   *  interrupted send can be re-dispatched without asking the user to
+   *  retype their message. */
+  sourceUserText?: string;
 }
 
 interface Props {
   message: DisplayMessage;
+  /** Invoked when the user clicks "Retry" on an errored assistant bubble. */
+  onRetry?: (message: DisplayMessage) => void;
 }
 
 /**
@@ -35,7 +41,7 @@ interface Props {
  * states: pending (with elapsed timer), streaming (markdown + cursor),
  * error, and synthetic system notices (e.g. summarisation).
  */
-export function ChatBubble({ message }: Props) {
+export function ChatBubble({ message, onRetry }: Props) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end animate-fadeIn">
@@ -72,7 +78,18 @@ export function ChatBubble({ message }: Props) {
     return (
       <div className="flex justify-start animate-fadeIn">
         <div className="max-w-[92%] md:max-w-[78%] px-4 py-3 rounded-2xl rounded-bl-sm text-[13px] leading-relaxed bg-panel border border-red-600/40 text-red-600 font-sans">
-          {message.errorMessage || message.content || 'Request failed'}
+          <p className="break-words">
+            {message.errorMessage || message.content || 'Request failed'}
+          </p>
+          {onRetry && message.sourceUserText && (
+            <button
+              type="button"
+              onClick={() => onRetry(message)}
+              className="mt-2 text-[10px] uppercase tracking-[0.14em] font-sans border border-red-600/60 text-red-600 px-2.5 py-1 rounded hover:bg-red-600 hover:text-bg transition-colors"
+            >
+              ↻ Retry
+            </button>
+          )}
         </div>
       </div>
     );

@@ -14,6 +14,11 @@ import { ChatBubble, type DisplayMessage } from '../components/ChatBubble';
 import { ComposerDock, type ComposerToggle } from '../components/ComposerDock';
 import { Sheet, IconButton } from '../components/Sheet';
 import { styleLabel } from '../lib/styles';
+import {
+  isTransientNetworkError,
+  useOnVisibilityResume,
+  useWasRecentlyHidden,
+} from '../lib/network';
 
 
 function uid() {
@@ -100,36 +105,50 @@ function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Initial load: conversations + models in parallel.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [convRes, modelsRes, stylesRes] = await Promise.all([
-          api.conversations(),
-          api.models(),
-          api.styles('chat').catch(() => null),
-        ]);
-        if (cancelled) return;
-        setConversations(convRes.conversations);
-        setModels(modelsRes.models);
-        if (modelsRes.models[0]) setModel(modelsRes.models[0].name);
-        if (stylesRes?.chat) {
-          setChatStyles(stylesRes.chat);
-          // Default to the catalogue default (e.g. "general").
-          setStyleKey((prev) => prev || stylesRes.chat!.default);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setError((err as Error)?.message ?? 'Failed to load');
-      } finally {
-        if (!cancelled) setLoadingConversations(false);
+  // Visibility tracking — iOS suspends backgrounded tabs and kills any
+  // in-flight fetches; errors that fire in that window are not real.
+  const vis = useWasRecentlyHidden();
+  const initialLoadOkRef = useRef(false);
+
+  // Initial load: conversations + models + styles in parallel. Exposed
+  // as a ref'd function so we can re-run it automatically when the page
+  // returns from background if the first attempt failed.
+  const runInitialLoad = useRef<() => Promise<void>>(() => Promise.resolve());
+  runInitialLoad.current = async () => {
+    try {
+      const [convRes, modelsRes, stylesRes] = await Promise.all([
+        api.conversations(),
+        api.models(),
+        api.styles('chat').catch(() => null),
+      ]);
+      setConversations(convRes.conversations);
+      setModels(modelsRes.models);
+      setModel((prev) => prev || modelsRes.models[0]?.name || '');
+      if (stylesRes?.chat) {
+        setChatStyles(stylesRes.chat);
+        setStyleKey((prev) => prev || stylesRes.chat!.default);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      initialLoadOkRef.current = true;
+      setError(null);
+    } catch (err) {
+      // Quietly drop iOS-suspend errors — retry happens on resume.
+      if (isTransientNetworkError(err)) return;
+      setError((err as Error)?.message ?? 'Failed to load');
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  useEffect(() => {
+    void runInitialLoad.current();
   }, []);
+
+  // If the tab was killed before the first successful load, retry the
+  // moment it comes back to the foreground.
+  useOnVisibilityResume(() => {
+    if (!initialLoadOkRef.current) void runInitialLoad.current();
+  });
+
 
   // Auto-scroll on new messages.
   useEffect(() => {
@@ -344,7 +363,12 @@ function ChatPage() {
       }
     } catch (err) {
       const aborted = (err as Error)?.name === 'AbortError';
-      if (!aborted) {
+      // iOS backgrounding kills in-flight fetches and surfaces a
+      // TypeError "Load failed". Treat those as silent aborts — the
+      // user will retry when they come back.
+      const transient =
+        isTransientNetworkError(err) && (vis.isHidden() || vis.justResumed());
+      if (!aborted && !transient) {
         const msg = (err as Error)?.message ?? 'Send failed';
         setMessages((ms) =>
           ms.map((x) =>
@@ -352,6 +376,10 @@ function ChatPage() {
           ),
         );
         setError(msg);
+      } else if (transient) {
+        // Drop the pending bubble entirely so the composer is usable
+        // again on resume. The user text stays in their history.
+        setMessages((ms) => ms.filter((x) => x.id !== pendingId));
       }
     } finally {
       if (streamAbortRef.current === controller) {
@@ -371,8 +399,8 @@ function ChatPage() {
     return { conversationId: newConversationId, consentNeeded };
   }
 
-  async function send() {
-    const text = input.trim();
+  async function send(forcedText?: string) {
+    const text = (forcedText ?? input).trim();
     if (!text || sending || !model) return;
 
     const userMsg: DisplayMessage = {
@@ -389,9 +417,10 @@ function ChatPage() {
       status: 'pending',
       startedAt: Date.now(),
       responseStyle: styleKey || undefined,
+      sourceUserText: text,
     };
     setMessages((m) => [...m, userMsg, pendingMsg]);
-    setInput('');
+    if (!forcedText) setInput('');
     setSending(true);
     setError(null);
 
@@ -629,7 +658,24 @@ function ChatPage() {
             ) : (
               messages.map((m) => (
                 <div key={m.id} className="space-y-1">
-                  <ChatBubble message={m} />
+                  <ChatBubble
+                    message={m}
+                    onRetry={(mm) => {
+                      if (!mm.sourceUserText) return;
+                      // Drop the errored assistant bubble AND the user
+                      // message that triggered it, then re-send — the
+                      // normal send() flow will add a fresh pair.
+                      setMessages((ms) => {
+                        const idx = ms.findIndex((x) => x.id === mm.id);
+                        if (idx <= 0) return ms.filter((x) => x.id !== mm.id);
+                        const prev = ms[idx - 1];
+                        const toDrop = new Set([mm.id]);
+                        if (prev?.role === 'user') toDrop.add(prev.id);
+                        return ms.filter((x) => !toDrop.has(x.id));
+                      });
+                      void send(mm.sourceUserText);
+                    }}
+                  />
                   {m.role === 'assistant' && m.status === 'complete' && m.responseStyle && (
                     <div className="flex justify-start">
                       <span className="text-[9px] font-sans uppercase tracking-[0.14em] text-muted pl-5 inline-flex items-center gap-1">

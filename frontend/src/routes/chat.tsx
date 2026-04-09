@@ -48,12 +48,28 @@ function ChatPage() {
   // or new-chat.
   const streamAbortRef = useRef<AbortController | null>(null);
 
+  // Session-level: bypass the consent dialog. When true, every /chat request
+  // goes out with search_enabled: true and the modal never appears.
+  const [alwaysAllowSearch, setAlwaysAllowSearch] = useState(false);
+
+  // Consent dialog state. Populated when the harness emits
+  // `search_consent_required`. The pendingUserText + pendingMsgId let us
+  // re-POST the same message on allow/deny without double-adding a bubble.
+  const [consentRequest, setConsentRequest] = useState<{
+    query: string;
+    reason: string;
+    pendingUserText: string;
+    pendingAssistantId: string;
+  } | null>(null);
+
   // Properties drawer (right rail). Hosts rename + stats + details.
   // Manual refresh only — stats never auto-hydrate.
   const [stats, setStats] = useState<ConversationSummary | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   async function refreshStats() {
     if (activeId == null) {
@@ -161,77 +177,65 @@ function ChatPage() {
     };
   }, []);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || sending || !model) return;
-
-    const userMsg: DisplayMessage = {
-      id: uid(),
-      role: 'user',
-      content: text,
-      status: 'complete',
-    };
-    const pendingId = uid();
-    const pendingMsg: DisplayMessage = {
-      id: pendingId,
-      role: 'assistant',
-      content: '',
-      status: 'pending',
-      startedAt: Date.now(),
-    };
-    setMessages((m) => [...m, userMsg, pendingMsg]);
-    setInput('');
-    setSending(true);
-    setError(null);
-
-    // rag_enabled / knowledge_enabled only go out on the first message of a
-    // new chat. The harness persists the setting on the conversations row
-    // and ignores these fields on subsequent turns.
-    const isFirstMessage = activeId == null;
-    const searchForThisTurn = searchEnabled;
+  /**
+   * Drive an SSE chat stream into the pending assistant bubble. Extracted so
+   * that both the initial send AND the consent-resolution re-post can reuse
+   * the same reducer loop without duplicating logic.
+   *
+   * Returns the `conversation_id` the harness confirmed, or null if the
+   * stream didn't reach a terminal `done`.
+   */
+  async function runChatStream(
+    body: Parameters<typeof api.chatStream>[0],
+    pendingId: string,
+    userText: string,
+  ): Promise<{ conversationId: number | null; consentNeeded: boolean }> {
+    const isFirstMessage = body.conversation_id == null;
     const controller = new AbortController();
     streamAbortRef.current = controller;
 
+    let newConversationId: number | null = null;
+    let consentNeeded = false;
+    let consentArgs: { query: string; reason: string } | null = null;
+
     try {
-      const stream = api.chatStream(
-        {
-          model,
-          message: text,
-          conversation_id: activeId ?? undefined,
-          ...(isFirstMessage && ragEnabled ? { rag_enabled: true } : {}),
-          ...(isFirstMessage && knowledgeEnabled ? { knowledge_enabled: true } : {}),
-          ...(searchForThisTurn ? { search_enabled: true } : {}),
-        },
-        controller.signal,
-      );
-
-      let firstChunkSeen = false;
-      let newConversationId: number | null = null;
-
+      const stream = api.chatStream(body, controller.signal);
       for await (const ev of stream) {
         if (ev.type === 'searching') {
           setMessages((ms) =>
-            ms.map((x) =>
-              x.id === pendingId ? { ...x, status: 'searching' } : x,
-            ),
+            ms.map((x) => (x.id === pendingId ? { ...x, status: 'searching' } : x)),
           );
           continue;
         }
         if (ev.type === 'search_complete') {
           const sources = ev.sources;
-          setMessages((ms) =>
-            ms.map((x) =>
-              x.id === pendingId
-                ? { ...x, status: 'pending', sources }
-                : x,
-            ),
-          );
+          if (ev.ok === false) {
+            // Render a subtle failure chip on the assistant bubble. The model
+            // itself will acknowledge the miss in its upcoming reply text.
+            setMessages((ms) =>
+              ms.map((x) =>
+                x.id === pendingId
+                  ? { ...x, status: 'pending', sources, searchFailed: true }
+                  : x,
+              ),
+            );
+          } else {
+            setMessages((ms) =>
+              ms.map((x) =>
+                x.id === pendingId
+                  ? { ...x, status: 'pending', sources, searchFailed: false }
+                  : x,
+              ),
+            );
+          }
+          continue;
+        }
+        if (ev.type === 'search_consent_required') {
+          consentNeeded = true;
+          consentArgs = { query: ev.query, reason: ev.reason };
           continue;
         }
         if (ev.type === 'chunk') {
-          if (!firstChunkSeen) {
-            firstChunkSeen = true;
-          }
           setMessages((ms) =>
             ms.map((x) =>
               x.id === pendingId
@@ -240,7 +244,6 @@ function ChatPage() {
             ),
           );
         } else if (ev.type === 'summarised') {
-          // Splice a synthetic system notice *before* the assistant bubble.
           const notice: DisplayMessage = {
             id: uid(),
             role: 'system',
@@ -255,11 +258,21 @@ function ChatPage() {
             return copy;
           });
         } else if (ev.type === 'meta') {
-          // Early conversation_id from harness — capture before 'done'.
           if (ev.conversation_id != null) newConversationId = ev.conversation_id;
         } else if (ev.type === 'done') {
           if (ev.conversation_id != null) newConversationId = ev.conversation_id;
-          // Harness may emit token counts under either shape.
+          if (ev.awaiting === 'search_consent') {
+            // Intentional pause. Park the pending bubble in an "awaiting"
+            // state and return — the caller opens the modal.
+            setMessages((ms) =>
+              ms.map((x) =>
+                x.id === pendingId
+                  ? { ...x, status: 'pending', startedAt: undefined }
+                  : x,
+              ),
+            );
+            break;
+          }
           const tokIn = ev.usage?.prompt_tokens ?? ev.tokens_input;
           const tokOut = ev.usage?.completion_tokens ?? ev.tokens_output;
           setMessages((ms) =>
@@ -289,9 +302,10 @@ function ChatPage() {
         }
       }
 
-      // First message in a brand-new conversation — capture the returned id
-      // and refresh the sidebar so it appears.
-      if (isFirstMessage && newConversationId != null) {
+      // First message on a brand-new conversation — persist the returned
+      // id, but only once we're PAST the consent pause (otherwise the
+      // harness hasn't actually committed the user row yet).
+      if (isFirstMessage && newConversationId != null && !consentNeeded) {
         setActiveId(newConversationId);
         try {
           const convRes = await api.conversations();
@@ -315,9 +329,128 @@ function ChatPage() {
       if (streamAbortRef.current === controller) {
         streamAbortRef.current = null;
       }
+    }
+
+    if (consentNeeded && consentArgs) {
+      setConsentRequest({
+        query: consentArgs.query,
+        reason: consentArgs.reason,
+        pendingUserText: userText,
+        pendingAssistantId: pendingId,
+      });
+    }
+
+    return { conversationId: newConversationId, consentNeeded };
+  }
+
+  async function send() {
+    const text = input.trim();
+    if (!text || sending || !model) return;
+
+    const userMsg: DisplayMessage = {
+      id: uid(),
+      role: 'user',
+      content: text,
+      status: 'complete',
+    };
+    const pendingId = uid();
+    const pendingMsg: DisplayMessage = {
+      id: pendingId,
+      role: 'assistant',
+      content: '',
+      status: 'pending',
+      startedAt: Date.now(),
+    };
+    setMessages((m) => [...m, userMsg, pendingMsg]);
+    setInput('');
+    setSending(true);
+    setError(null);
+
+    // rag_enabled / knowledge_enabled only go out on the first message of a
+    // new chat. The harness persists the setting on the conversations row
+    // and ignores these fields on subsequent turns.
+    const isFirstMessage = activeId == null;
+    const searchForThisTurn = searchEnabled || alwaysAllowSearch;
+
+    try {
+      await runChatStream(
+        {
+          model,
+          message: text,
+          conversation_id: activeId ?? undefined,
+          ...(isFirstMessage && ragEnabled ? { rag_enabled: true } : {}),
+          ...(isFirstMessage && knowledgeEnabled ? { knowledge_enabled: true } : {}),
+          ...(searchForThisTurn ? { search_enabled: true } : {}),
+        },
+        pendingId,
+        text,
+      );
+    } finally {
       setSending(false);
-      // Search is per-message — reset after each turn.
+      // Search is per-message — reset after each turn. (The session-level
+      // "always allow" toggle is separate and persists.)
       setSearchEnabled(false);
+    }
+  }
+
+  /** User clicked "Allow" in the consent dialog: re-POST with search_enabled. */
+  async function resolveConsent(allow: boolean) {
+    if (!consentRequest) return;
+    const { pendingUserText, pendingAssistantId } = consentRequest;
+    setConsentRequest(null);
+
+    // Reset the parked assistant bubble back to pending + fresh timer.
+    setMessages((ms) =>
+      ms.map((x) =>
+        x.id === pendingAssistantId
+          ? { ...x, status: 'pending', content: '', startedAt: Date.now() }
+          : x,
+      ),
+    );
+
+    setSending(true);
+    setError(null);
+    try {
+      await runChatStream(
+        {
+          model,
+          message: pendingUserText,
+          conversation_id: activeId ?? undefined,
+          ...(allow ? { search_enabled: true } : { search_consent_declined: true }),
+        },
+        pendingAssistantId,
+        pendingUserText,
+      );
+    } finally {
+      setSending(false);
+      setSearchEnabled(false);
+    }
+  }
+
+  /** Save rename to harness and update sidebar + header in place. */
+  async function saveRename() {
+    if (activeId == null) return;
+    const title = renameTitle.trim();
+    if (!title) {
+      setRenameError('Title cannot be empty');
+      return;
+    }
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      const res = await api.renameConversation(activeId, title);
+      const next = res.conversation;
+      setConversations((cs) =>
+        cs.map((c) => (c.Id === next.Id ? { ...c, title: next.title } : c)),
+      );
+      if (stats && stats.conversation.Id === next.Id) {
+        setStats({ ...stats, conversation: { ...stats.conversation, title: next.title } });
+      }
+      setRenameTitle(next.title);
+    } catch (err) {
+      setRenameError((err as Error)?.message ?? 'Rename failed');
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -337,6 +470,48 @@ function ChatPage() {
     activeId != null ? conversations.find((c) => c.Id === activeId) ?? null : null;
 
   return (
+    <>
+    {/* ——— Search consent modal ——— */}
+    {consentRequest && (
+      <div className="fixed inset-0 z-50 bg-fg/30 backdrop-blur-sm flex items-center justify-center px-6 animate-fadeIn">
+        <div className="w-full max-w-md bg-bg border border-border rounded-xl shadow-card overflow-hidden">
+          <div className="px-6 pt-6 pb-4 border-b border-border">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-muted font-mono mb-1">
+              Allow web search?
+            </p>
+            <h3 className="font-display text-2xl font-semibold tracking-tightest leading-tight">
+              This question looks like it needs live info.
+            </h3>
+          </div>
+          <div className="px-6 py-5 space-y-4">
+            <p className="text-[13px] leading-relaxed text-muted">{consentRequest.reason}</p>
+            <div className="border border-border rounded-md px-3 py-2 bg-panel/60">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-muted font-mono mb-0.5">
+                Query
+              </p>
+              <p className="text-[13px] font-mono break-words">{consentRequest.query}</p>
+            </div>
+          </div>
+          <div className="px-6 pb-5 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => void resolveConsent(false)}
+              className="text-[11px] uppercase tracking-[0.14em] font-mono px-4 py-2 rounded-md border border-border text-fg hover:bg-panelHi transition-colors"
+            >
+              Deny
+            </button>
+            <button
+              type="button"
+              onClick={() => void resolveConsent(true)}
+              className="text-[11px] uppercase tracking-[0.14em] font-mono px-4 py-2 rounded-md bg-fg text-bg hover:bg-fg/85 transition-colors"
+            >
+              Allow
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     <div className="h-full flex bg-bg text-fg">
       {/* ——— Sidebar ——— */}
       <aside className="w-80 border-r border-border bg-panel/60 flex flex-col">
@@ -603,20 +778,35 @@ function ChatPage() {
                 value={renameTitle}
                 onChange={(e) => setRenameTitle(e.target.value)}
                 placeholder={activeConversation?.title || 'Untitled'}
-                disabled={activeId == null}
+                disabled={activeId == null || renaming}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void saveRename();
+                  }
+                }}
                 className="w-full bg-bg border border-border rounded-md px-3 py-2 text-[14px] focus:outline-none focus:border-fg disabled:opacity-50"
               />
               <div className="flex items-center justify-between mt-2">
                 <p className="text-[10px] font-mono text-muted">
-                  Save requires harness endpoint
+                  {renameError ? (
+                    <span className="text-red-600">{renameError}</span>
+                  ) : (
+                    'Enter to save'
+                  )}
                 </p>
                 <button
                   type="button"
-                  disabled
-                  title="Needs PATCH /conversations/{id} on harness"
-                  className="text-[10px] uppercase tracking-[0.14em] font-mono px-3 py-1 rounded border border-border text-muted cursor-not-allowed"
+                  onClick={() => void saveRename()}
+                  disabled={
+                    activeId == null ||
+                    renaming ||
+                    !renameTitle.trim() ||
+                    renameTitle.trim() === (activeConversation?.title ?? '')
+                  }
+                  className="text-[10px] uppercase tracking-[0.14em] font-mono px-3 py-1 rounded border border-fg text-fg hover:bg-fg hover:text-bg transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg disabled:cursor-not-allowed"
                 >
-                  Save
+                  {renaming ? '…' : 'Save'}
                 </button>
               </div>
             </section>
@@ -644,12 +834,44 @@ function ChatPage() {
                   {activeId == null ? (knowledgeEnabled ? 'on (first turn)' : 'off') : 'sticky'}
                 </dd>
                 <dt className="text-muted">Search</dt>
-                <dd className="text-right">{searchEnabled ? 'on (next turn)' : 'off'}</dd>
+                <dd className="text-right">
+                  {alwaysAllowSearch
+                    ? 'always on'
+                    : searchEnabled
+                      ? 'on (next turn)'
+                      : 'off'}
+                </dd>
               </dl>
               <p className="text-[10px] font-mono text-muted mt-2 leading-relaxed">
                 Memory / Knowledge are captured when the chat is first created.
                 Search is per-turn. Toggle in the composer below.
               </p>
+
+              <label className="mt-3 flex items-center justify-between gap-2 text-[11px] font-mono text-fg cursor-pointer select-none">
+                <span>
+                  <span className="text-muted uppercase tracking-[0.14em] text-[10px] block">
+                    Always allow web search
+                  </span>
+                  <span className="text-[10px] text-muted">skip the consent dialog</span>
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={alwaysAllowSearch}
+                  onClick={() => setAlwaysAllowSearch((v) => !v)}
+                  className={[
+                    'relative w-9 h-5 rounded-full border transition-colors shrink-0',
+                    alwaysAllowSearch ? 'bg-fg border-fg' : 'bg-bg border-border',
+                  ].join(' ')}
+                >
+                  <span
+                    className={[
+                      'absolute top-0.5 w-3.5 h-3.5 rounded-full transition-transform',
+                      alwaysAllowSearch ? 'left-0.5 translate-x-4 bg-bg' : 'left-0.5 bg-fg',
+                    ].join(' ')}
+                  />
+                </button>
+              </label>
             </section>
 
             {/* Stats header + refresh */}
@@ -860,6 +1082,7 @@ function ChatPage() {
         </aside>
       )}
     </div>
+    </>
   );
 }
 

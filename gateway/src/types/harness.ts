@@ -17,6 +17,7 @@ export interface HarnessChatRequest {
   rag_collection?: string | null;
   knowledge_enabled?: boolean;
   search_enabled?: boolean;
+  search_consent_declined?: boolean;
 }
 
 export interface HarnessCodeFile {

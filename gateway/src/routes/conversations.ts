@@ -2,10 +2,12 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { getAuthContext } from '../lib/auth-context.js';
 import { FetchTimeoutError } from '../lib/fetch-with-timeout.js';
+import { z } from 'zod';
 import {
   getConversationMessages as harnessGetMessages,
   getConversationSummary as harnessGetSummary,
   listConversations as harnessListConversations,
+  updateConversation as harnessUpdateConversation,
 } from '../services/harness/index.js';
 import { assertInteger } from '../lib/noco-filter.js';
 import type { AuthVariables } from '../types/auth.js';
@@ -65,6 +67,48 @@ conversationsRoute.get('/:id/summary', async (c) => {
       return c.json({ error: 'not_found' }, 404);
     }
     return c.json(body);
+  } catch (err) {
+    return mapHarnessError(err);
+  }
+});
+
+/**
+ * Rename (or otherwise patch) a conversation. We enforce org ownership by
+ * fetching the existing conversation first via the summary endpoint — the
+ * harness's PATCH /conversations/{id} does not otherwise know who's calling.
+ */
+const patchSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+});
+
+conversationsRoute.patch('/:id', async (c) => {
+  const { orgId } = getAuthContext(c);
+  let conversationId: number;
+  try {
+    conversationId = assertInteger(c.req.param('id'), 'conversation_id');
+  } catch {
+    return c.json({ error: 'invalid_id' }, 400);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.issues }, 400);
+  }
+
+  try {
+    // Ownership check: fetch the existing conversation and verify org_id.
+    const existingRes = await harnessGetSummary(conversationId);
+    if (!existingRes.ok) return forward(existingRes);
+    const existing = (await existingRes.json()) as {
+      conversation?: { org_id?: number } | null;
+    };
+    if (!existing.conversation || Number(existing.conversation.org_id) !== Number(orgId)) {
+      return c.json({ error: 'not_found' }, 404);
+    }
+
+    const res = await harnessUpdateConversation(conversationId, parsed.data);
+    return forward(res);
   } catch (err) {
     return mapHarnessError(err);
   }

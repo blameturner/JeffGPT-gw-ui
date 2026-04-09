@@ -17,6 +17,8 @@ export interface DisplayMessage {
   errorMessage?: string;
   /** Web search citations — 'Title: URL' strings. */
   sources?: string[];
+  /** True if a web search was attempted but returned no usable results. */
+  searchFailed?: boolean;
 }
 
 interface Props {
@@ -77,6 +79,11 @@ export function ChatBubble({ message }: Props) {
   return (
     <div className="flex justify-start animate-fadeIn">
       <div className="max-w-[85%] px-5 py-4 rounded-2xl rounded-bl-sm bg-panel border border-border text-fg markdown-body">
+        {message.searchFailed && (
+          <div className="mb-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] font-mono text-muted px-2 py-0.5 rounded-full border border-border bg-bg">
+            <span aria-hidden>·</span> Search returned no results
+          </div>
+        )}
         <MarkdownBody content={message.content} />
         {isStreaming && <span className="caret" />}
         {message.sources && message.sources.length > 0 && (

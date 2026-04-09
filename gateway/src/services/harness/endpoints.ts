@@ -66,6 +66,17 @@ export function getConversationSummary(conversationId: number): Promise<Response
   );
 }
 
+export function updateConversation(
+  conversationId: number,
+  body: { title?: string },
+): Promise<Response> {
+  return harnessClient.patch(
+    `/conversations/${conversationId}`,
+    body,
+    HARNESS_CONVERSATIONS_TIMEOUT_MS,
+  );
+}
+
 // --- Enrichment / scheduler -------------------------------------------------
 
 export function triggerScheduler(): Promise<Response> {

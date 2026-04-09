@@ -20,4 +20,15 @@ export const harnessClient = {
       timeoutMs,
     );
   },
+  patch(path: string, body: unknown, timeoutMs: number): Promise<Response> {
+    return fetchWithTimeout(
+      `${env.HARNESS_URL}${path}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      timeoutMs,
+    );
+  },
 };

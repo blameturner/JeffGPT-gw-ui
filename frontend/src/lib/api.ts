@@ -87,11 +87,30 @@ export type StreamEvent =
       duration_seconds?: number;
       mode?: 'plan' | 'execute' | 'debug';
       output?: string;
+      /** Intentional pause waiting for a UI resolution. Currently only
+       *  `"search_consent"` is emitted by the harness. When present the
+       *  stream is NOT a failed/empty reply — hold the assistant bubble
+       *  until the user resolves the dialog. */
+      awaiting?: 'search_consent';
     }
   | { type: 'summarised'; removed: number; summary_chars: number }
   | { type: 'parsed'; output: AgentOutput | null }
   | { type: 'searching' }
-  | { type: 'search_complete'; source_count: number; sources: string[] }
+  | {
+      type: 'search_complete';
+      source_count: number;
+      sources: string[];
+      /** New — false when the web search returned zero useful results. */
+      ok?: boolean;
+    }
+  | {
+      /** Harness wants the user to approve a live web search before
+       *  generating. Paired with a `done { awaiting: "search_consent" }`
+       *  from the backend. */
+      type: 'search_consent_required';
+      query: string;
+      reason: string;
+    }
   | { type: 'error'; message: string };
 
 export interface ChatStreamRequest {
@@ -105,6 +124,10 @@ export interface ChatStreamRequest {
   rag_collection?: string | null;
   knowledge_enabled?: boolean;
   search_enabled?: boolean;
+  /** Set true when the user explicitly declined the consent dialog.
+   *  The harness uses this to inject an acknowledgment into the reply
+   *  rather than silently trying another search. */
+  search_consent_declined?: boolean;
 }
 
 export interface CodeFilePayload {
@@ -365,6 +388,10 @@ export const api = {
     http
       .get(`api/conversations/${conversationId}/summary`)
       .json<ConversationSummary>(),
+  renameConversation: (conversationId: number, title: string) =>
+    http
+      .patch(`api/conversations/${conversationId}`, { json: { title } })
+      .json<{ conversation: Conversation }>(),
   chatStream: (body: ChatStreamRequest, signal?: AbortSignal) =>
     postSSE('api/chat', body, signal),
   codeStream: (body: CodeStreamRequest, signal?: AbortSignal) =>

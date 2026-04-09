@@ -21,6 +21,10 @@ const chatSchema = z.object({
   rag_collection: z.string().optional().nullable(),
   knowledge_enabled: z.boolean().optional(),
   search_enabled: z.boolean().optional(),
+  // Set by the frontend when the user clicks "Deny" in the consent dialog.
+  // The harness uses this to inject an acknowledgment into the reply rather
+  // than silently re-attempting a search.
+  search_consent_declined: z.boolean().optional(),
 });
 
 chatRoute.post('/', async (c) => {

@@ -14,4 +14,5 @@ export {
   run,
   runStream,
   triggerScheduler,
+  updateConversation,
 } from './endpoints.js';

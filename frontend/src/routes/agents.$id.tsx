@@ -48,7 +48,7 @@ function AgentDetailPage() {
   }, [agentId]);
 
   return (
-    <div className="min-h-screen bg-bg text-fg font-sans">
+    <div className="min-h-full bg-bg text-fg font-sans">
       <header className="border-b border-border px-8 py-5 flex items-baseline gap-6">
         <Link to="/agents" className="text-xs uppercase tracking-[0.2em] text-muted font-mono">
           ← agents

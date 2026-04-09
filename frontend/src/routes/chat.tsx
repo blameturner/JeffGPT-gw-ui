@@ -48,12 +48,12 @@ function ChatPage() {
   // or new-chat.
   const streamAbortRef = useRef<AbortController | null>(null);
 
-  // Stats panel — manual refresh only. Calls the harness summary endpoint
-  // via the gateway; the panel is rendered inside the sidebar, and a full
-  // detail overlay opens on demand for observations / runs / outputs.
+  // Properties drawer (right rail). Hosts rename + stats + details.
+  // Manual refresh only — stats never auto-hydrate.
   const [stats, setStats] = useState<ConversationSummary | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
-  const [statsOverlay, setStatsOverlay] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [renameTitle, setRenameTitle] = useState('');
 
   async function refreshStats() {
     if (activeId == null) {
@@ -118,6 +118,7 @@ function ChatPage() {
     setLoadingMessages(true);
     setError(null);
     setStats(null);
+    setRenameTitle(c.title || '');
     try {
       const res = await api.conversationMessages(c.Id);
       setMessages(
@@ -146,6 +147,7 @@ function ChatPage() {
     setMessages([]);
     setError(null);
     setStats(null);
+    setRenameTitle('');
     setRagEnabled(false);
     setKnowledgeEnabled(false);
     setSearchEnabled(false);
@@ -335,7 +337,7 @@ function ChatPage() {
     activeId != null ? conversations.find((c) => c.Id === activeId) ?? null : null;
 
   return (
-    <div className="h-screen flex bg-bg text-fg">
+    <div className="h-full flex bg-bg text-fg">
       {/* ——— Sidebar ——— */}
       <aside className="w-80 border-r border-border bg-panel/60 flex flex-col">
         <div className="px-6 pt-6 pb-4 border-b border-border">
@@ -372,314 +374,8 @@ function ChatPage() {
           />
         </div>
 
-        {/* Stats panel — manual refresh only, never auto-hydrates. */}
-        <div className="border-t border-border px-5 py-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-muted">
-              Conversation stats
-            </span>
-            <button
-              onClick={() => void refreshStats()}
-              disabled={activeId == null || loadingStats}
-              className="text-[10px] uppercase tracking-[0.14em] font-mono text-fg hover:underline underline-offset-4 disabled:opacity-40"
-            >
-              {loadingStats ? '…' : 'Refresh'}
-            </button>
-          </div>
-          {activeId == null ? (
-            <p className="text-[11px] text-muted font-mono">Select a conversation.</p>
-          ) : stats == null ? (
-            <p className="text-[11px] text-muted font-mono">Tap refresh to load.</p>
-          ) : (
-            <>
-              <dl className="grid grid-cols-2 gap-y-1 text-[11px] font-mono">
-                <dt className="text-muted">messages</dt>
-                <dd className="text-right">{stats.message_count}</dd>
-                <dt className="text-muted">runs</dt>
-                <dd className="text-right">{stats.run_count}</dd>
-                <dt className="text-muted">observations</dt>
-                <dd className="text-right">{stats.observation_count}</dd>
-                <dt className="text-muted">tasks</dt>
-                <dd className="text-right">{stats.task_count}</dd>
-
-                <dt className="text-muted mt-2 pt-2 border-t border-border">tokens in</dt>
-                <dd className="text-right mt-2 pt-2 border-t border-border">
-                  {stats.tokens_input.toLocaleString()}
-                </dd>
-                <dt className="text-muted">tokens out</dt>
-                <dd className="text-right">{stats.tokens_output.toLocaleString()}</dd>
-                <dt className="text-muted font-semibold">total</dt>
-                <dd className="text-right font-semibold">
-                  {stats.tokens_total.toLocaleString()}
-                </dd>
-
-                {stats.run_duration_seconds > 0 && (
-                  <>
-                    <dt className="text-muted mt-2 pt-2 border-t border-border">run time</dt>
-                    <dd className="text-right mt-2 pt-2 border-t border-border">
-                      {stats.run_duration_seconds.toFixed(2)}s
-                    </dd>
-                  </>
-                )}
-              </dl>
-
-              {stats.models_used.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-muted mb-1">
-                    Models
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {stats.models_used.map((m) => (
-                      <span
-                        key={m}
-                        className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border bg-bg"
-                      >
-                        {m}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {stats.themes.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-muted mb-1">
-                    Themes
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {stats.themes.map((t) => (
-                      <span
-                        key={t}
-                        className="text-[10px] font-mono px-1.5 py-0.5 rounded-full border border-border bg-bg"
-                      >
-                        {t}
-                        {stats.theme_counts[t] != null && (
-                          <span className="text-muted ml-1">·{stats.theme_counts[t]}</span>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {(stats.observation_count > 0 || stats.run_count > 0) && (
-                <button
-                  onClick={() => setStatsOverlay(true)}
-                  className="mt-3 w-full text-[10px] uppercase tracking-[0.16em] font-mono text-fg border border-border rounded py-1.5 hover:bg-panelHi transition-colors"
-                >
-                  View details →
-                </button>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="border-t border-border px-5 py-4 flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-[0.16em] text-muted">signed in</span>
-          <button
-            onClick={logout}
-            className="text-xs font-medium text-fg hover:underline underline-offset-4"
-          >
-            Sign out
-          </button>
-        </div>
       </aside>
 
-      {/* ——— Details overlay ——— */}
-      {statsOverlay && stats && (
-        <div
-          className="fixed inset-0 z-40 bg-fg/20 backdrop-blur-sm flex justify-end animate-fadeIn"
-          onClick={() => setStatsOverlay(false)}
-        >
-          <aside
-            className="w-[440px] max-w-full h-full bg-bg border-l border-border shadow-card overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <header className="sticky top-0 bg-bg/95 backdrop-blur px-6 py-5 border-b border-border flex items-start justify-between">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-muted">
-                  Conversation details
-                </p>
-                <h3 className="font-display text-xl font-semibold tracking-tightest truncate">
-                  {stats.conversation.title || 'Untitled'}
-                </h3>
-              </div>
-              <button
-                onClick={() => setStatsOverlay(false)}
-                className="text-fg text-xl leading-none px-2 -mr-2 hover:opacity-60"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </header>
-
-            <div className="px-6 py-5 space-y-6 text-sm">
-              {/* Token breakdown */}
-              <section>
-                <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
-                  Token breakdown
-                </h4>
-                <dl className="grid grid-cols-2 gap-y-1 text-[12px] font-mono">
-                  <dt className="text-muted">messages in</dt>
-                  <dd className="text-right">
-                    {stats.tokens_breakdown.messages_input.toLocaleString()}
-                  </dd>
-                  <dt className="text-muted">messages out</dt>
-                  <dd className="text-right">
-                    {stats.tokens_breakdown.messages_output.toLocaleString()}
-                  </dd>
-                  <dt className="text-muted">runs in</dt>
-                  <dd className="text-right">
-                    {stats.tokens_breakdown.runs_input.toLocaleString()}
-                  </dd>
-                  <dt className="text-muted">runs out</dt>
-                  <dd className="text-right">
-                    {stats.tokens_breakdown.runs_output.toLocaleString()}
-                  </dd>
-                  <dt className="text-muted">runs context</dt>
-                  <dd className="text-right">
-                    {stats.tokens_breakdown.runs_context.toLocaleString()}
-                  </dd>
-                </dl>
-              </section>
-
-              {/* Roles */}
-              {Object.keys(stats.role_counts).length > 0 && (
-                <section>
-                  <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
-                    Roles
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(stats.role_counts).map(([role, count]) => (
-                      <span
-                        key={role}
-                        className="text-[11px] font-mono px-2 py-0.5 rounded-full border border-border"
-                      >
-                        {role} <span className="text-muted">·{count}</span>
-                      </span>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Observations */}
-              {stats.observations.length > 0 && (
-                <section>
-                  <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
-                    Observations · {stats.observation_count}
-                  </h4>
-                  <ul className="space-y-3">
-                    {stats.observations.map((o) => (
-                      <li key={o.Id} className="border border-border rounded-md p-3 bg-panel/60">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <p className="font-medium text-[14px] leading-snug">{o.title}</p>
-                          <span
-                            className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
-                              o.confidence === 'high'
-                                ? 'border-fg text-fg'
-                                : o.confidence === 'medium'
-                                  ? 'border-muted text-muted'
-                                  : 'border-border text-muted'
-                            }`}
-                          >
-                            {o.confidence}
-                          </span>
-                        </div>
-                        <p className="text-[12px] text-muted leading-relaxed">{o.content}</p>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          <span className="text-[10px] font-mono text-muted">
-                            {o.type} · {o.domain}
-                          </span>
-                          {o.agent_name && (
-                            <span className="text-[10px] font-mono text-muted">
-                              · {o.agent_name}
-                            </span>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              {/* Runs */}
-              {stats.runs.length > 0 && (
-                <section>
-                  <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
-                    Agent runs · {stats.run_count}
-                  </h4>
-                  <ul className="space-y-3">
-                    {stats.runs.map((r) => (
-                      <li key={r.Id} className="border border-border rounded-md p-3 bg-panel/60">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <p className="font-medium text-[13px]">{r.agent_name}</p>
-                          <span className="text-[10px] font-mono text-muted">
-                            {r.status}
-                          </span>
-                        </div>
-                        {r.summary && (
-                          <p className="text-[12px] text-muted mb-2 leading-relaxed">
-                            {r.summary}
-                          </p>
-                        )}
-                        <dl className="grid grid-cols-3 gap-x-3 gap-y-0.5 text-[10px] font-mono text-muted">
-                          <dt>in</dt>
-                          <dd className="col-span-2 text-fg">
-                            {r.tokens_input.toLocaleString()}
-                          </dd>
-                          <dt>out</dt>
-                          <dd className="col-span-2 text-fg">
-                            {r.tokens_output.toLocaleString()}
-                          </dd>
-                          {r.context_tokens != null && (
-                            <>
-                              <dt>ctx</dt>
-                              <dd className="col-span-2 text-fg">
-                                {r.context_tokens.toLocaleString()}
-                              </dd>
-                            </>
-                          )}
-                          <dt>time</dt>
-                          <dd className="col-span-2 text-fg">
-                            {r.duration_seconds.toFixed(2)}s
-                          </dd>
-                          {r.model_name && (
-                            <>
-                              <dt>model</dt>
-                              <dd className="col-span-2 text-fg truncate">{r.model_name}</dd>
-                            </>
-                          )}
-                        </dl>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              {/* Outputs */}
-              {stats.outputs.length > 0 && (
-                <section>
-                  <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
-                    Outputs · {stats.output_count}
-                  </h4>
-                  <ul className="space-y-3">
-                    {stats.outputs.map((o) => (
-                      <li key={o.Id} className="border border-border rounded-md p-3 bg-panel/60">
-                        <p className="text-[10px] uppercase tracking-wider text-muted mb-1">
-                          {o.agent_name ?? `run #${o.run_id}`}
-                        </p>
-                        <p className="text-[12px] leading-relaxed whitespace-pre-wrap">
-                          {o.full_text}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-            </div>
-          </aside>
-        </div>
-      )}
 
       {/* ——— Main thread ——— */}
       <main className="flex-1 flex flex-col min-w-0">
@@ -693,7 +389,7 @@ function ChatPage() {
               {activeConversation?.title || 'Untitled'}
             </h2>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
             <label className="text-[10px] uppercase tracking-[0.16em] text-muted">Model</label>
             <select
               value={model}
@@ -710,6 +406,19 @@ function ChatPage() {
                 ))
               )}
             </select>
+            <button
+              type="button"
+              onClick={() => setDrawerOpen((v) => !v)}
+              className={[
+                'text-[11px] uppercase tracking-[0.14em] font-mono px-3 py-1.5 rounded-md border transition-colors',
+                drawerOpen
+                  ? 'border-fg bg-fg text-bg'
+                  : 'border-border text-fg hover:bg-panelHi',
+              ].join(' ')}
+              title="Show chat properties"
+            >
+              Properties
+            </button>
           </div>
         </header>
 
@@ -864,6 +573,292 @@ function ChatPage() {
           </div>
         </div>
       </main>
+
+      {/* ——— Right rail: Properties drawer ——— */}
+      {drawerOpen && (
+        <aside className="w-[380px] shrink-0 border-l border-border bg-panel/40 flex flex-col animate-fadeIn">
+          <header className="shrink-0 flex items-start justify-between px-5 py-4 border-b border-border">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted">Chat</p>
+              <h3 className="font-display text-lg font-semibold tracking-tightest truncate">
+                Properties
+              </h3>
+            </div>
+            <button
+              onClick={() => setDrawerOpen(false)}
+              className="text-fg text-xl leading-none px-2 -mr-2 hover:opacity-60"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </header>
+
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 text-sm">
+            {/* Rename */}
+            <section>
+              <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
+                Title
+              </h4>
+              <input
+                value={renameTitle}
+                onChange={(e) => setRenameTitle(e.target.value)}
+                placeholder={activeConversation?.title || 'Untitled'}
+                disabled={activeId == null}
+                className="w-full bg-bg border border-border rounded-md px-3 py-2 text-[14px] focus:outline-none focus:border-fg disabled:opacity-50"
+              />
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-[10px] font-mono text-muted">
+                  Save requires harness endpoint
+                </p>
+                <button
+                  type="button"
+                  disabled
+                  title="Needs PATCH /conversations/{id} on harness"
+                  className="text-[10px] uppercase tracking-[0.14em] font-mono px-3 py-1 rounded border border-border text-muted cursor-not-allowed"
+                >
+                  Save
+                </button>
+              </div>
+            </section>
+
+            {/* Settings (placeholders for per-turn controls) */}
+            <section>
+              <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
+                Settings
+              </h4>
+              <dl className="grid grid-cols-2 gap-y-1.5 text-[12px] font-mono">
+                <dt className="text-muted">Model</dt>
+                <dd className="text-right truncate">{model || '—'}</dd>
+                <dt className="text-muted">Memory</dt>
+                <dd className="text-right">
+                  {activeId == null
+                    ? ragEnabled
+                      ? 'on (first turn)'
+                      : 'off'
+                    : (stats?.conversation as any)?.rag_enabled
+                      ? 'on'
+                      : 'sticky'}
+                </dd>
+                <dt className="text-muted">Knowledge</dt>
+                <dd className="text-right">
+                  {activeId == null ? (knowledgeEnabled ? 'on (first turn)' : 'off') : 'sticky'}
+                </dd>
+                <dt className="text-muted">Search</dt>
+                <dd className="text-right">{searchEnabled ? 'on (next turn)' : 'off'}</dd>
+              </dl>
+              <p className="text-[10px] font-mono text-muted mt-2 leading-relaxed">
+                Memory / Knowledge are captured when the chat is first created.
+                Search is per-turn. Toggle in the composer below.
+              </p>
+            </section>
+
+            {/* Stats header + refresh */}
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted">Stats</h4>
+                <button
+                  onClick={() => void refreshStats()}
+                  disabled={activeId == null || loadingStats}
+                  className="text-[10px] uppercase tracking-[0.14em] font-mono text-fg hover:underline underline-offset-4 disabled:opacity-40"
+                >
+                  {loadingStats ? '…' : 'Refresh'}
+                </button>
+              </div>
+
+              {activeId == null ? (
+                <p className="text-[11px] text-muted font-mono">Select a conversation.</p>
+              ) : stats == null ? (
+                <p className="text-[11px] text-muted font-mono">Tap refresh to load.</p>
+              ) : (
+                <>
+                  <dl className="grid grid-cols-2 gap-y-1 text-[11px] font-mono">
+                    <dt className="text-muted">messages</dt>
+                    <dd className="text-right">{stats.message_count}</dd>
+                    <dt className="text-muted">runs</dt>
+                    <dd className="text-right">{stats.run_count}</dd>
+                    <dt className="text-muted">observations</dt>
+                    <dd className="text-right">{stats.observation_count}</dd>
+                    <dt className="text-muted">tasks</dt>
+                    <dd className="text-right">{stats.task_count}</dd>
+
+                    <dt className="text-muted mt-2 pt-2 border-t border-border">tokens in</dt>
+                    <dd className="text-right mt-2 pt-2 border-t border-border">
+                      {stats.tokens_input.toLocaleString()}
+                    </dd>
+                    <dt className="text-muted">tokens out</dt>
+                    <dd className="text-right">{stats.tokens_output.toLocaleString()}</dd>
+                    <dt className="text-muted font-semibold">total</dt>
+                    <dd className="text-right font-semibold">
+                      {stats.tokens_total.toLocaleString()}
+                    </dd>
+
+                    {stats.run_duration_seconds > 0 && (
+                      <>
+                        <dt className="text-muted mt-2 pt-2 border-t border-border">run time</dt>
+                        <dd className="text-right mt-2 pt-2 border-t border-border">
+                          {stats.run_duration_seconds.toFixed(2)}s
+                        </dd>
+                      </>
+                    )}
+                  </dl>
+
+                  {stats.models_used.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-[9px] uppercase tracking-[0.16em] text-muted mb-1">
+                        Models
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {stats.models_used.map((m) => (
+                          <span
+                            key={m}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border bg-bg"
+                          >
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {stats.themes.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-[9px] uppercase tracking-[0.16em] text-muted mb-1">
+                        Themes
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {stats.themes.map((t) => (
+                          <span
+                            key={t}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded-full border border-border bg-bg"
+                          >
+                            {t}
+                            {stats.theme_counts[t] != null && (
+                              <span className="text-muted ml-1">·{stats.theme_counts[t]}</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+
+            {/* Observations */}
+            {stats && stats.observations.length > 0 && (
+              <section>
+                <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
+                  Observations · {stats.observation_count}
+                </h4>
+                <ul className="space-y-3">
+                  {stats.observations.map((o) => (
+                    <li key={o.Id} className="border border-border rounded-md p-3 bg-bg">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="font-medium text-[13px] leading-snug">{o.title}</p>
+                        <span
+                          className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
+                            o.confidence === 'high'
+                              ? 'border-fg text-fg'
+                              : o.confidence === 'medium'
+                                ? 'border-muted text-muted'
+                                : 'border-border text-muted'
+                          }`}
+                        >
+                          {o.confidence}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted leading-relaxed">{o.content}</p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        <span className="text-[10px] font-mono text-muted">
+                          {o.type} · {o.domain}
+                        </span>
+                        {o.agent_name && (
+                          <span className="text-[10px] font-mono text-muted">
+                            · {o.agent_name}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {/* Runs */}
+            {stats && stats.runs.length > 0 && (
+              <section>
+                <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
+                  Agent runs · {stats.run_count}
+                </h4>
+                <ul className="space-y-3">
+                  {stats.runs.map((r) => (
+                    <li key={r.Id} className="border border-border rounded-md p-3 bg-bg">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="font-medium text-[13px]">{r.agent_name}</p>
+                        <span className="text-[10px] font-mono text-muted">{r.status}</span>
+                      </div>
+                      {r.summary && (
+                        <p className="text-[11px] text-muted mb-2 leading-relaxed">
+                          {r.summary}
+                        </p>
+                      )}
+                      <dl className="grid grid-cols-3 gap-x-3 gap-y-0.5 text-[10px] font-mono text-muted">
+                        <dt>in</dt>
+                        <dd className="col-span-2 text-fg">
+                          {(r.tokens_input ?? 0).toLocaleString()}
+                        </dd>
+                        <dt>out</dt>
+                        <dd className="col-span-2 text-fg">
+                          {(r.tokens_output ?? 0).toLocaleString()}
+                        </dd>
+                        {r.context_tokens != null && (
+                          <>
+                            <dt>ctx</dt>
+                            <dd className="col-span-2 text-fg">
+                              {r.context_tokens.toLocaleString()}
+                            </dd>
+                          </>
+                        )}
+                        <dt>time</dt>
+                        <dd className="col-span-2 text-fg">
+                          {(r.duration_seconds ?? 0).toFixed(2)}s
+                        </dd>
+                        {r.model_name && (
+                          <>
+                            <dt>model</dt>
+                            <dd className="col-span-2 text-fg truncate">{r.model_name}</dd>
+                          </>
+                        )}
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {/* Outputs */}
+            {stats && stats.outputs.length > 0 && (
+              <section>
+                <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
+                  Outputs · {stats.output_count}
+                </h4>
+                <ul className="space-y-3">
+                  {stats.outputs.map((o) => (
+                    <li key={o.Id} className="border border-border rounded-md p-3 bg-bg">
+                      <p className="text-[10px] uppercase tracking-wider text-muted mb-1">
+                        {o.agent_name ?? `run #${o.run_id}`}
+                      </p>
+                      <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
+                        {o.full_text}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

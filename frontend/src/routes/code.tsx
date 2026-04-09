@@ -194,7 +194,7 @@ function CodePage() {
   const codeBlocks = lastAssistant ? extractCodeBlocks(lastAssistant.content) : [];
 
   return (
-    <div className="h-screen flex bg-bg text-fg">
+    <div className="h-full flex bg-bg text-fg">
       <div className="flex-1 flex flex-col border-r border-border min-w-0">
         <header className="border-b border-border px-6 py-4 flex items-center justify-between gap-4">
           <div className="min-w-0">

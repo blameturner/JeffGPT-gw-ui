@@ -1,10 +1,17 @@
 export {
   chat,
+  code,
   getConversationMessages,
   getConversationSummary,
+  getGraphCoverage,
+  getSchedulerStatus,
   health,
   listAgents,
   listConversations,
   listModels,
+  listWorkerTypes,
+  reloadScheduler,
   run,
+  runStream,
+  triggerScheduler,
 } from './endpoints.js';

@@ -58,6 +58,7 @@ ensureAuthSecret();
 const schema = z.object({
   PORT: z.coerce.number().default(3900),
   HARNESS_URL: z.string().url().default('http://mst-ag-harness:3800'),
+  CHROMA_URL: z.string().url().default('http://mst-ag-chroma:8000'),
   NOCODB_URL: z.string().url(),
   NOCODB_TOKEN: z.string().min(1),
   NOCODB_BASE_ID: z.string().min(1),

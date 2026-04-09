@@ -9,16 +9,7 @@ import {
 } from '../lib/api';
 import { authClient } from '../lib/auth-client';
 import { ConversationList } from '../components/ConversationList';
-import { ChatBubble } from '../components/ChatBubble';
-
-type DisplayMessage = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  pending?: boolean;
-  /** If the harness returned context_chars > 0 on this turn, show it as a badge. */
-  contextChars?: number;
-};
+import { ChatBubble, type DisplayMessage } from '../components/ChatBubble';
 
 
 function uid() {
@@ -49,6 +40,13 @@ function ChatPage() {
   // Once the conversation exists on the harness, its rag setting is sticky
   // and this flag is ignored.
   const [ragEnabled, setRagEnabled] = useState(false);
+  // Knowledge graph writes (FalkorDB) — same first-turn-only semantics.
+  const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
+  // Web search — per-message toggle, resets to off after each send.
+  const [searchEnabled, setSearchEnabled] = useState(false);
+  // Abort controller for the in-flight stream, so we can cancel on unmount
+  // or new-chat.
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   // Stats panel — manual refresh only. Calls the harness summary endpoint
   // via the gateway; the panel is rendered inside the sidebar, and a full
@@ -125,10 +123,13 @@ function ChatPage() {
       setMessages(
         res.messages
           .filter((m: ChatMessageRow) => m.role !== 'system')
-          .map((m: ChatMessageRow) => ({
+          .map<DisplayMessage>((m: ChatMessageRow) => ({
             id: String(m.Id),
             role: m.role as 'user' | 'assistant',
             content: m.content,
+            status: 'complete',
+            tokensIn: m.tokens_input,
+            tokensOut: m.tokens_output,
           })),
       );
     } catch (err) {
@@ -139,55 +140,157 @@ function ChatPage() {
   }
 
   function newChat() {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
     setActiveId(null);
     setMessages([]);
     setError(null);
     setStats(null);
     setRagEnabled(false);
+    setKnowledgeEnabled(false);
+    setSearchEnabled(false);
     textareaRef.current?.focus();
   }
+
+  // Abort any in-flight stream on unmount.
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+    };
+  }, []);
 
   async function send() {
     const text = input.trim();
     if (!text || sending || !model) return;
 
-    const userMsg: DisplayMessage = { id: uid(), role: 'user', content: text };
-    const pendingMsg: DisplayMessage = {
+    const userMsg: DisplayMessage = {
       id: uid(),
+      role: 'user',
+      content: text,
+      status: 'complete',
+    };
+    const pendingId = uid();
+    const pendingMsg: DisplayMessage = {
+      id: pendingId,
       role: 'assistant',
       content: '',
-      pending: true,
+      status: 'pending',
+      startedAt: Date.now(),
     };
     setMessages((m) => [...m, userMsg, pendingMsg]);
     setInput('');
     setSending(true);
     setError(null);
 
+    // rag_enabled / knowledge_enabled only go out on the first message of a
+    // new chat. The harness persists the setting on the conversations row
+    // and ignores these fields on subsequent turns.
+    const isFirstMessage = activeId == null;
+    const searchForThisTurn = searchEnabled;
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+
     try {
-      // rag_enabled only goes out on the first message of a new chat. The
-      // harness persists the setting on the conversations row and ignores it
-      // on subsequent turns.
-      const isFirstMessage = activeId == null;
-      const res = await api.chat({
-        model,
-        message: text,
-        conversation_id: activeId ?? undefined,
-        ...(isFirstMessage && ragEnabled ? { rag_enabled: true } : {}),
-      });
-      setMessages((m) =>
-        m
-          .filter((x) => x.id !== pendingMsg.id)
-          .concat({
-            id: uid(),
-            role: 'assistant',
-            content: res.output,
-            contextChars: res.context_chars && res.context_chars > 0 ? res.context_chars : undefined,
-          }),
+      const stream = api.chatStream(
+        {
+          model,
+          message: text,
+          conversation_id: activeId ?? undefined,
+          ...(isFirstMessage && ragEnabled ? { rag_enabled: true } : {}),
+          ...(isFirstMessage && knowledgeEnabled ? { knowledge_enabled: true } : {}),
+          ...(searchForThisTurn ? { search_enabled: true } : {}),
+        },
+        controller.signal,
       );
+
+      let firstChunkSeen = false;
+      let newConversationId: number | null = null;
+
+      for await (const ev of stream) {
+        if (ev.type === 'searching') {
+          setMessages((ms) =>
+            ms.map((x) =>
+              x.id === pendingId ? { ...x, status: 'searching' } : x,
+            ),
+          );
+          continue;
+        }
+        if (ev.type === 'search_complete') {
+          const sources = ev.sources;
+          setMessages((ms) =>
+            ms.map((x) =>
+              x.id === pendingId
+                ? { ...x, status: 'pending', sources }
+                : x,
+            ),
+          );
+          continue;
+        }
+        if (ev.type === 'chunk') {
+          if (!firstChunkSeen) {
+            firstChunkSeen = true;
+          }
+          setMessages((ms) =>
+            ms.map((x) =>
+              x.id === pendingId
+                ? { ...x, status: 'streaming', content: x.content + ev.text }
+                : x,
+            ),
+          );
+        } else if (ev.type === 'summarised') {
+          // Splice a synthetic system notice *before* the assistant bubble.
+          const notice: DisplayMessage = {
+            id: uid(),
+            role: 'system',
+            status: 'system',
+            content: `Trimmed ${ev.removed} earlier message${ev.removed === 1 ? '' : 's'} (≈${ev.summary_chars.toLocaleString()} chars summarised)`,
+          };
+          setMessages((ms) => {
+            const idx = ms.findIndex((x) => x.id === pendingId);
+            if (idx < 0) return [...ms, notice];
+            const copy = ms.slice();
+            copy.splice(idx, 0, notice);
+            return copy;
+          });
+        } else if (ev.type === 'meta') {
+          // Early conversation_id from harness — capture before 'done'.
+          if (ev.conversation_id != null) newConversationId = ev.conversation_id;
+        } else if (ev.type === 'done') {
+          if (ev.conversation_id != null) newConversationId = ev.conversation_id;
+          // Harness may emit token counts under either shape.
+          const tokIn = ev.usage?.prompt_tokens ?? ev.tokens_input;
+          const tokOut = ev.usage?.completion_tokens ?? ev.tokens_output;
+          setMessages((ms) =>
+            ms.map((x) =>
+              x.id === pendingId
+                ? {
+                    ...x,
+                    status: 'complete',
+                    startedAt: undefined,
+                    tokensIn: tokIn,
+                    tokensOut: tokOut,
+                    contextChars:
+                      ev.context_chars && ev.context_chars > 0 ? ev.context_chars : undefined,
+                  }
+                : x,
+            ),
+          );
+        } else if (ev.type === 'error') {
+          setMessages((ms) =>
+            ms.map((x) =>
+              x.id === pendingId
+                ? { ...x, status: 'error', errorMessage: ev.message }
+                : x,
+            ),
+          );
+          break;
+        }
+      }
+
       // First message in a brand-new conversation — capture the returned id
       // and refresh the sidebar so it appears.
-      if (activeId == null) {
-        setActiveId(res.conversation_id);
+      if (isFirstMessage && newConversationId != null) {
+        setActiveId(newConversationId);
         try {
           const convRes = await api.conversations();
           setConversations(convRes.conversations);
@@ -196,10 +299,23 @@ function ChatPage() {
         }
       }
     } catch (err) {
-      setMessages((m) => m.filter((x) => x.id !== pendingMsg.id));
-      setError((err as Error)?.message ?? 'Send failed');
+      const aborted = (err as Error)?.name === 'AbortError';
+      if (!aborted) {
+        const msg = (err as Error)?.message ?? 'Send failed';
+        setMessages((ms) =>
+          ms.map((x) =>
+            x.id === pendingId ? { ...x, status: 'error', errorMessage: msg } : x,
+          ),
+        );
+        setError(msg);
+      }
     } finally {
+      if (streamAbortRef.current === controller) {
+        streamAbortRef.current = null;
+      }
       setSending(false);
+      // Search is per-message — reset after each turn.
+      setSearchEnabled(false);
     }
   }
 
@@ -614,14 +730,30 @@ function ChatPage() {
             ) : (
               messages.map((m) => (
                 <div key={m.id} className="space-y-1">
-                  <ChatBubble message={m} pending={m.pending} />
-                  {m.role === 'assistant' && m.contextChars != null && (
+                  <ChatBubble message={m} />
+                  {m.role === 'assistant' && m.status === 'complete' && m.contextChars != null && (
                     <div className="flex justify-start">
                       <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted pl-5">
                         Memory · {m.contextChars.toLocaleString()} chars of context
+                        {m.tokensOut != null && (
+                          <span className="ml-2">· {m.tokensOut.toLocaleString()} tok out</span>
+                        )}
                       </span>
                     </div>
                   )}
+                  {m.role === 'assistant' &&
+                    m.status === 'complete' &&
+                    m.contextChars == null &&
+                    m.tokensOut != null && (
+                      <div className="flex justify-start">
+                        <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted pl-5">
+                          {m.tokensOut.toLocaleString()} tok out
+                          {m.tokensIn != null && (
+                            <span className="ml-2">· {m.tokensIn.toLocaleString()} in</span>
+                          )}
+                        </span>
+                      </div>
+                    )}
                 </div>
               ))
             )}
@@ -672,26 +804,62 @@ function ChatPage() {
                 conversation. Once activeId is set, the conversation's RAG
                 setting is sticky on the harness side and we disable the toggle.
               */}
-              <button
-                type="button"
-                onClick={() => setRagEnabled((v) => !v)}
-                disabled={activeId != null}
-                title={
-                  activeId != null
-                    ? 'Memory is set when a conversation is first created'
-                    : 'Use past conversations as context'
-                }
-                className={[
-                  'text-[10px] uppercase tracking-[0.14em] font-mono px-2.5 py-1 rounded-full border transition-colors',
-                  activeId != null
-                    ? 'border-border text-muted opacity-50 cursor-not-allowed'
-                    : ragEnabled
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRagEnabled((v) => !v)}
+                  disabled={activeId != null}
+                  title={
+                    activeId != null
+                      ? 'Memory is set when a conversation is first created'
+                      : 'Use past conversations as context'
+                  }
+                  className={[
+                    'text-[10px] uppercase tracking-[0.14em] font-mono px-2.5 py-1 rounded-full border transition-colors',
+                    activeId != null
+                      ? 'border-border text-muted opacity-50 cursor-not-allowed'
+                      : ragEnabled
+                        ? 'border-fg bg-fg text-bg'
+                        : 'border-border text-muted hover:border-fg hover:text-fg',
+                  ].join(' ')}
+                >
+                  {ragEnabled ? '● Memory on' : '○ Memory off'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKnowledgeEnabled((v) => !v)}
+                  disabled={activeId != null}
+                  title={
+                    activeId != null
+                      ? 'Knowledge graph is set when a conversation is first created'
+                      : 'Extract entities and write concept edges to the knowledge graph'
+                  }
+                  className={[
+                    'text-[10px] uppercase tracking-[0.14em] font-mono px-2.5 py-1 rounded-full border transition-colors',
+                    activeId != null
+                      ? 'border-border text-muted opacity-50 cursor-not-allowed'
+                      : knowledgeEnabled
+                        ? 'border-fg bg-fg text-bg'
+                        : 'border-border text-muted hover:border-fg hover:text-fg',
+                  ].join(' ')}
+                >
+                  {knowledgeEnabled ? '● Knowledge on' : '○ Knowledge off'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchEnabled((v) => !v)}
+                  disabled={sending}
+                  title="Run a web search for this message"
+                  className={[
+                    'text-[10px] uppercase tracking-[0.14em] font-mono px-2.5 py-1 rounded-full border transition-colors',
+                    searchEnabled
                       ? 'border-fg bg-fg text-bg'
                       : 'border-border text-muted hover:border-fg hover:text-fg',
-                ].join(' ')}
-              >
-                {ragEnabled ? '● Memory on' : '○ Memory off'}
-              </button>
+                  ].join(' ')}
+                >
+                  {searchEnabled ? '● Search on' : '○ Search off'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

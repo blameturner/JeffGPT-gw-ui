@@ -2,9 +2,13 @@
 
 Personal project. Gateway + frontend for the MST AG harness.
 
+Jeff is the name of my cat.
+
 This is incredibly Claude Coded and I make no apologies because I was lazy.
 
 I will be tinkering with it and improving it myself later until AGI comes in 2055
+
+You are welcome to fork this. It's probably crap, but feel free. I do not guarantee it will work.
 
 ## Server compose
 

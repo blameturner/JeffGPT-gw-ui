@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import { listAgents } from '../services/harness/endpoints.js';
+import { listAgents, listWorkerTypes } from '../services/harness/endpoints.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { getAuthContext } from '../lib/auth-context.js';
+import { FetchTimeoutError } from '../lib/fetch-with-timeout.js';
 import type { AuthVariables } from '../types/auth.js';
 
 export const workersRoute = new Hono<{ Variables: AuthVariables }>();
@@ -15,6 +16,23 @@ interface HarnessAgent {
   model: string;
   status: string | null;
 }
+
+workersRoute.get('/types', async (c) => {
+  try {
+    const res = await listWorkerTypes();
+    if (!res.ok) {
+      return c.json({ error: 'harness_error', status: res.status }, 502);
+    }
+    const body = (await res.json()) as { types?: string[] };
+    return c.json({ types: body.types ?? [] });
+  } catch (err) {
+    if (err instanceof FetchTimeoutError) {
+      return c.json({ error: 'harness_timeout' }, 504);
+    }
+    console.error('[workers] types harness unreachable', err);
+    return c.json({ error: 'harness_unreachable' }, 502);
+  }
+});
 
 workersRoute.get('/', async (c) => {
   const { orgId } = getAuthContext(c);

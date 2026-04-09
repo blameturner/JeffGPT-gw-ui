@@ -69,18 +69,64 @@ export interface ChatMessageRow {
   CreatedAt?: string;
 }
 
-export interface ChatResponse {
-  success: boolean;
-  conversation_id: number;
+/**
+ * Server-Sent Event emitted by the streaming /api/chat and /api/run/stream
+ * endpoints. Matches the harness contract exactly.
+ */
+export type StreamEvent =
+  | { type: 'chunk'; text: string }
+  | { type: 'meta'; conversation_id?: number; mode?: 'plan' | 'execute' | 'debug' }
+  | {
+      type: 'done';
+      usage?: { prompt_tokens: number; completion_tokens: number };
+      tokens_input?: number;
+      tokens_output?: number;
+      model?: string;
+      conversation_id?: number;
+      context_chars?: number;
+      duration_seconds?: number;
+      mode?: 'plan' | 'execute' | 'debug';
+      output?: string;
+    }
+  | { type: 'summarised'; removed: number; summary_chars: number }
+  | { type: 'parsed'; output: AgentOutput | null }
+  | { type: 'searching' }
+  | { type: 'search_complete'; source_count: number; sources: string[] }
+  | { type: 'error'; message: string };
+
+export interface ChatStreamRequest {
   model: string;
-  output: string;
-  tokens_input: number;
-  tokens_output: number;
-  duration_seconds: number;
-  /** Non-zero when RAG memory was used on this turn (harness-side). */
-  context_chars?: number;
-  /** Echoes the conversation's persistent RAG setting. */
+  message: string;
+  conversation_id?: number | null;
+  system?: string | null;
+  temperature?: number;
+  max_tokens?: number;
   rag_enabled?: boolean;
+  rag_collection?: string | null;
+  knowledge_enabled?: boolean;
+  search_enabled?: boolean;
+}
+
+export interface CodeFilePayload {
+  name: string;
+  content_b64: string;
+}
+
+export interface CodeStreamRequest {
+  model: string;
+  message: string;
+  mode: 'plan' | 'execute' | 'debug';
+  approved_plan?: string | null;
+  files?: CodeFilePayload[];
+  conversation_id?: number | null;
+  temperature?: number;
+  max_tokens?: number;
+}
+
+export interface RunStreamRequest {
+  agent_name: string;
+  task: string;
+  product: string;
 }
 
 export interface ConversationSummary {
@@ -155,6 +201,145 @@ export interface ConversationSummary {
   tasks: unknown[];
 }
 
+// --- Enrichment -------------------------------------------------------------
+
+export const ENRICHMENT_CATEGORIES = [
+  'documentation',
+  'news',
+  'competitive',
+  'regulatory',
+  'research',
+  'security',
+  'model_releases',
+] as const;
+export type EnrichmentCategory = (typeof ENRICHMENT_CATEGORIES)[number];
+
+export const ENRICHMENT_EVENT_TYPES = [
+  'cycle_start',
+  'cycle_end',
+  'source_scraped',
+  'source_unchanged',
+  'source_rejected',
+  'source_error',
+  'suggestion_generated',
+  'proactive_search',
+  'budget_exhausted',
+  'deferred',
+] as const;
+export type EnrichmentEventType = (typeof ENRICHMENT_EVENT_TYPES)[number];
+
+export interface ScrapeTarget {
+  id: number;
+  org_id: number;
+  name: string;
+  url: string;
+  category: EnrichmentCategory;
+  frequency_hours: number;
+  last_scraped_at: string | null;
+  status: string | null;
+  chunk_count: number;
+  content_hash: string | null;
+  active: boolean;
+}
+
+export interface EnrichmentLogEntry {
+  id: number;
+  org_id: number;
+  scrape_target_id: number | null;
+  cycle_id: string;
+  event_type: EnrichmentEventType;
+  source_url: string | null;
+  message: string | null;
+  chunks_stored: number | null;
+  tokens_used: number | null;
+  duration_seconds: number | null;
+  flags: string[];
+  created_at: string | null;
+}
+
+export interface SuggestedScrapeTarget {
+  id: number;
+  org_id: number;
+  url: string;
+  name: string;
+  category: EnrichmentCategory;
+  reason: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  confidence_score: number;
+  suggested_by_url: string | null;
+  suggested_by_cycle: number | null;
+  times_suggested: number;
+  status: 'pending' | 'approved' | 'rejected' | 'already_exists';
+  reviewed_by_user_id: number | null;
+  reviewed_at: string | null;
+}
+
+export interface SchedulerStatus {
+  running: boolean;
+  next_run: string | null;
+  sources_due: number;
+}
+
+export interface GraphCoverageNode {
+  name: string;
+  degree: number;
+}
+
+// --- Agents & schedules -----------------------------------------------------
+
+export interface AgentSummary {
+  Id: number;
+  name: string;
+  display_name?: string;
+  model?: string;
+  status?: string | null;
+  worker_type?: string;
+  product?: string;
+  task_description?: string;
+  [k: string]: unknown;
+}
+
+export interface AgentRun {
+  Id: number;
+  agent_id: number;
+  status: string;
+  summary?: string | null;
+  tokens_input?: number | null;
+  tokens_output?: number | null;
+  duration_seconds?: number | null;
+  model_name?: string | null;
+  CreatedAt?: string;
+}
+
+export interface AgentOutputRow {
+  Id: number;
+  run_id: number;
+  agent_name?: string | null;
+  full_text?: string | null;
+  CreatedAt?: string;
+}
+
+export interface AgentSchedule {
+  id: number;
+  org_id: number;
+  agent_name: string;
+  cron_expression: string;
+  timezone: string;
+  task_description: string;
+  product: string;
+  active: boolean;
+  reload_warning?: string;
+}
+
+export interface ScheduleCreateBody {
+  agent_name: string;
+  cron_expression: string;
+  timezone: string;
+  task_description: string;
+  product: string;
+  active?: boolean;
+}
+
 export const api = {
   setupStatus: () => http.get('api/setup/status').json<{ configured: boolean }>(),
   setup: (body: {
@@ -180,14 +365,149 @@ export const api = {
     http
       .get(`api/conversations/${conversationId}/summary`)
       .json<ConversationSummary>(),
-  chat: (body: {
-    model: string;
-    message: string;
-    conversation_id?: number | null;
-    system?: string | null;
-    temperature?: number;
-    max_tokens?: number;
-    rag_enabled?: boolean;
-    rag_collection?: string | null;
-  }) => http.post('api/chat', { json: body }).json<ChatResponse>(),
+  chatStream: (body: ChatStreamRequest, signal?: AbortSignal) =>
+    postSSE('api/chat', body, signal),
+  codeStream: (body: CodeStreamRequest, signal?: AbortSignal) =>
+    postSSE('api/code', body, signal),
+  runStream: (body: RunStreamRequest, signal?: AbortSignal) =>
+    postSSE('api/run/stream', body, signal),
+
+  enrichment: {
+    sources: () =>
+      http.get('api/enrichment/sources').json<{ sources: ScrapeTarget[] }>(),
+    createSource: (body: {
+      name: string;
+      url: string;
+      category: EnrichmentCategory;
+      frequency_hours: number;
+      active?: boolean;
+    }) => http.post('api/enrichment/sources', { json: body }).json<ScrapeTarget>(),
+    updateSource: (id: number, body: Partial<ScrapeTarget>) =>
+      http.patch(`api/enrichment/sources/${id}`, { json: body }).json<ScrapeTarget>(),
+    deleteSource: (id: number) =>
+      http.delete(`api/enrichment/sources/${id}`).json<{ ok: true }>(),
+    triggerSource: (id: number) =>
+      http.post(`api/enrichment/sources/${id}/trigger`).json<{ status: string }>(),
+    flushSource: (id: number) =>
+      http.post(`api/enrichment/sources/${id}/flush`).json<{ ok: true; collections_touched: number }>(),
+    log: (params: {
+      cycle_id?: string;
+      event_type?: string;
+      scrape_target_id?: number;
+      page?: number;
+      limit?: number;
+    }) => {
+      const searchParams: Record<string, string> = {};
+      if (params.cycle_id) searchParams.cycle_id = params.cycle_id;
+      if (params.event_type) searchParams.event_type = params.event_type;
+      if (params.scrape_target_id != null)
+        searchParams.scrape_target_id = String(params.scrape_target_id);
+      if (params.page != null) searchParams.page = String(params.page);
+      if (params.limit != null) searchParams.limit = String(params.limit);
+      return http
+        .get('api/enrichment/log', { searchParams })
+        .json<{ entries: EnrichmentLogEntry[]; page: number; limit: number; total: number }>();
+    },
+    suggestions: () =>
+      http
+        .get('api/enrichment/suggestions')
+        .json<{ suggestions: SuggestedScrapeTarget[] }>(),
+    reviewSuggestion: (
+      id: number,
+      body: { status: 'approved' | 'rejected'; frequency_hours?: number },
+    ) => http.patch(`api/enrichment/suggestions/${id}`, { json: body }).json<{ ok: true }>(),
+    status: () => http.get('api/enrichment/status').json<SchedulerStatus>(),
+    triggerCycle: () =>
+      http.post('api/enrichment/trigger').json<{ status: string }>(),
+    graphCoverage: () =>
+      http
+        .get('api/enrichment/graph/coverage')
+        .json<GraphCoverageNode[] | { nodes: GraphCoverageNode[] }>(),
+  },
+
+  agents: {
+    list: () => http.get('api/agents').json<{ agents: AgentSummary[] }>(),
+    runs: (id: number) =>
+      http
+        .get(`api/agents/${id}/runs`)
+        .json<{ runs: AgentRun[]; page: number; limit: number; total: number }>(),
+    outputs: (id: number) =>
+      http
+        .get(`api/agents/${id}/outputs`)
+        .json<{ outputs: AgentOutputRow[]; page: number; limit: number; total: number }>(),
+    workerTypes: () =>
+      http.get('api/workers/types').json<{ types: string[] }>(),
+  },
+
+  schedules: {
+    list: () => http.get('api/schedules').json<{ schedules: AgentSchedule[] }>(),
+    create: (body: ScheduleCreateBody) =>
+      http.post('api/schedules', { json: body }).json<AgentSchedule>(),
+    update: (id: number, body: Partial<ScheduleCreateBody>) =>
+      http.patch(`api/schedules/${id}`, { json: body }).json<AgentSchedule>(),
+    delete: (id: number) =>
+      http.delete(`api/schedules/${id}`).json<{ ok: true; reload_warning?: string }>(),
+  },
 };
+
+/**
+ * POST `body` as JSON and return an async iterator over parsed SSE events.
+ * Shared by chatStream + runStream. The caller aborts via the signal.
+ */
+async function* postSSE(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent, void, void> {
+  const res = await fetch(`${gatewayUrl()}/${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok || !res.body) {
+    // Gateway returned a JSON error shape (see chat.ts / run.ts 502/504 paths).
+    let detail = '';
+    try {
+      detail = await res.text();
+    } catch {
+      /* ignore */
+    }
+    yield { type: 'error', message: `HTTP ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ''}` };
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by a blank line.
+      let sep: number;
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
+        const raw = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const line = raw.replace(/^data:\s?/, '').trim();
+        if (!line || line === '[DONE]') continue;
+        try {
+          yield JSON.parse(line) as StreamEvent;
+        } catch (err) {
+          yield { type: 'error', message: `Bad SSE frame: ${(err as Error).message}` };
+        }
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* ignore */
+    }
+  }
+}

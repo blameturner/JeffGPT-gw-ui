@@ -11,8 +11,14 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as EnrichmentRouteImport } from './routes/enrichment'
+import { Route as CodeRouteImport } from './routes/code'
 import { Route as ChatRouteImport } from './routes/chat'
+import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AgentsNewRouteImport } from './routes/agents.new'
+import { Route as AgentsIdRouteImport } from './routes/agents.$id'
+import { Route as AgentsIdRunsRunIdRouteImport } from './routes/agents.$id.runs.$runId'
 
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
@@ -24,9 +30,24 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EnrichmentRoute = EnrichmentRouteImport.update({
+  id: '/enrichment',
+  path: '/enrichment',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CodeRoute = CodeRouteImport.update({
+  id: '/code',
+  path: '/code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentsRoute = AgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -34,37 +55,104 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsNewRoute = AgentsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AgentsRoute,
+} as any)
+const AgentsIdRoute = AgentsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AgentsRoute,
+} as any)
+const AgentsIdRunsRunIdRoute = AgentsIdRunsRunIdRouteImport.update({
+  id: '/runs/$runId',
+  path: '/runs/$runId',
+  getParentRoute: () => AgentsIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agents': typeof AgentsRouteWithChildren
   '/chat': typeof ChatRoute
+  '/code': typeof CodeRoute
+  '/enrichment': typeof EnrichmentRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/agents/$id': typeof AgentsIdRouteWithChildren
+  '/agents/new': typeof AgentsNewRoute
+  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agents': typeof AgentsRouteWithChildren
   '/chat': typeof ChatRoute
+  '/code': typeof CodeRoute
+  '/enrichment': typeof EnrichmentRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/agents/$id': typeof AgentsIdRouteWithChildren
+  '/agents/new': typeof AgentsNewRoute
+  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agents': typeof AgentsRouteWithChildren
   '/chat': typeof ChatRoute
+  '/code': typeof CodeRoute
+  '/enrichment': typeof EnrichmentRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/agents/$id': typeof AgentsIdRouteWithChildren
+  '/agents/new': typeof AgentsNewRoute
+  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/chat' | '/login' | '/setup'
+  fullPaths:
+    | '/'
+    | '/agents'
+    | '/chat'
+    | '/code'
+    | '/enrichment'
+    | '/login'
+    | '/setup'
+    | '/agents/$id'
+    | '/agents/new'
+    | '/agents/$id/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/chat' | '/login' | '/setup'
-  id: '__root__' | '/' | '/chat' | '/login' | '/setup'
+  to:
+    | '/'
+    | '/agents'
+    | '/chat'
+    | '/code'
+    | '/enrichment'
+    | '/login'
+    | '/setup'
+    | '/agents/$id'
+    | '/agents/new'
+    | '/agents/$id/runs/$runId'
+  id:
+    | '__root__'
+    | '/'
+    | '/agents'
+    | '/chat'
+    | '/code'
+    | '/enrichment'
+    | '/login'
+    | '/setup'
+    | '/agents/$id'
+    | '/agents/new'
+    | '/agents/$id/runs/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgentsRoute: typeof AgentsRouteWithChildren
   ChatRoute: typeof ChatRoute
+  CodeRoute: typeof CodeRoute
+  EnrichmentRoute: typeof EnrichmentRoute
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
 }
@@ -85,11 +173,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/enrichment': {
+      id: '/enrichment'
+      path: '/enrichment'
+      fullPath: '/enrichment'
+      preLoaderRoute: typeof EnrichmentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/code': {
+      id: '/code'
+      path: '/code'
+      fullPath: '/code'
+      preLoaderRoute: typeof CodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/chat': {
       id: '/chat'
       path: '/chat'
       fullPath: '/chat'
       preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agents': {
+      id: '/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AgentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -99,12 +208,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents/new': {
+      id: '/agents/new'
+      path: '/new'
+      fullPath: '/agents/new'
+      preLoaderRoute: typeof AgentsNewRouteImport
+      parentRoute: typeof AgentsRoute
+    }
+    '/agents/$id': {
+      id: '/agents/$id'
+      path: '/$id'
+      fullPath: '/agents/$id'
+      preLoaderRoute: typeof AgentsIdRouteImport
+      parentRoute: typeof AgentsRoute
+    }
+    '/agents/$id/runs/$runId': {
+      id: '/agents/$id/runs/$runId'
+      path: '/runs/$runId'
+      fullPath: '/agents/$id/runs/$runId'
+      preLoaderRoute: typeof AgentsIdRunsRunIdRouteImport
+      parentRoute: typeof AgentsIdRoute
+    }
   }
 }
 
+interface AgentsIdRouteChildren {
+  AgentsIdRunsRunIdRoute: typeof AgentsIdRunsRunIdRoute
+}
+
+const AgentsIdRouteChildren: AgentsIdRouteChildren = {
+  AgentsIdRunsRunIdRoute: AgentsIdRunsRunIdRoute,
+}
+
+const AgentsIdRouteWithChildren = AgentsIdRoute._addFileChildren(
+  AgentsIdRouteChildren,
+)
+
+interface AgentsRouteChildren {
+  AgentsIdRoute: typeof AgentsIdRouteWithChildren
+  AgentsNewRoute: typeof AgentsNewRoute
+}
+
+const AgentsRouteChildren: AgentsRouteChildren = {
+  AgentsIdRoute: AgentsIdRouteWithChildren,
+  AgentsNewRoute: AgentsNewRoute,
+}
+
+const AgentsRouteWithChildren =
+  AgentsRoute._addFileChildren(AgentsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgentsRoute: AgentsRouteWithChildren,
   ChatRoute: ChatRoute,
+  CodeRoute: CodeRoute,
+  EnrichmentRoute: EnrichmentRoute,
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
 }

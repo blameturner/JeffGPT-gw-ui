@@ -15,4 +15,23 @@ export interface HarnessChatRequest {
   max_tokens?: number;
   rag_enabled?: boolean;
   rag_collection?: string | null;
+  knowledge_enabled?: boolean;
+  search_enabled?: boolean;
+}
+
+export interface HarnessCodeFile {
+  name: string;
+  content_b64: string;
+}
+
+export interface HarnessCodeRequest {
+  org_id: number;
+  model: string;
+  message: string;
+  mode: 'plan' | 'execute' | 'debug';
+  approved_plan?: string | null;
+  files?: HarnessCodeFile[];
+  conversation_id?: number | null;
+  temperature?: number;
+  max_tokens?: number;
 }

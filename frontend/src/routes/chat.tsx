@@ -1,15 +1,18 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   api,
   type ChatMessageRow,
   type Conversation,
   type ConversationSummary,
   type LlmModel,
+  type StyleSurface,
 } from '../lib/api';
 import { authClient } from '../lib/auth-client';
 import { ConversationList } from '../components/ConversationList';
 import { ChatBubble, type DisplayMessage } from '../components/ChatBubble';
+import { ComposerDock, type ComposerToggle } from '../components/ComposerDock';
+import { styleLabel } from '../lib/styles';
 
 
 function uid() {
@@ -27,6 +30,10 @@ function ChatPage() {
   // models
   const [models, setModels] = useState<LlmModel[]>([]);
   const [model, setModel] = useState<string>('');
+
+  // response-style preset (per-turn, persisted per-conversation in localStorage)
+  const [chatStyles, setChatStyles] = useState<StyleSurface | null>(null);
+  const [styleKey, setStyleKey] = useState<string>('');
 
   // thread state
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -95,11 +102,20 @@ function ChatPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [convRes, modelsRes] = await Promise.all([api.conversations(), api.models()]);
+        const [convRes, modelsRes, stylesRes] = await Promise.all([
+          api.conversations(),
+          api.models(),
+          api.styles('chat').catch(() => null),
+        ]);
         if (cancelled) return;
         setConversations(convRes.conversations);
         setModels(modelsRes.models);
         if (modelsRes.models[0]) setModel(modelsRes.models[0].name);
+        if (stylesRes?.chat) {
+          setChatStyles(stylesRes.chat);
+          // Default to the catalogue default (e.g. "general").
+          setStyleKey((prev) => prev || stylesRes.chat!.default);
+        }
       } catch (err) {
         if (cancelled) return;
         setError((err as Error)?.message ?? 'Failed to load');
@@ -135,6 +151,14 @@ function ChatPage() {
     setError(null);
     setStats(null);
     setRenameTitle(c.title || '');
+    // Restore per-conversation style choice, falling back to catalogue default.
+    try {
+      const saved = window.localStorage.getItem(`chatStyle:${c.Id}`);
+      if (saved) setStyleKey(saved);
+      else if (chatStyles) setStyleKey(chatStyles.default);
+    } catch {
+      /* ignore storage errors */
+    }
     try {
       const res = await api.conversationMessages(c.Id);
       setMessages(
@@ -147,6 +171,7 @@ function ChatPage() {
             status: 'complete',
             tokensIn: m.tokens_input,
             tokensOut: m.tokens_output,
+            responseStyle: m.response_style ?? null,
           })),
       );
     } catch (err) {
@@ -360,6 +385,7 @@ function ChatPage() {
       content: '',
       status: 'pending',
       startedAt: Date.now(),
+      responseStyle: styleKey || undefined,
     };
     setMessages((m) => [...m, userMsg, pendingMsg]);
     setInput('');
@@ -381,6 +407,7 @@ function ChatPage() {
           ...(isFirstMessage && ragEnabled ? { rag_enabled: true } : {}),
           ...(isFirstMessage && knowledgeEnabled ? { knowledge_enabled: true } : {}),
           ...(searchForThisTurn ? { search_enabled: true } : {}),
+          ...(styleKey ? { response_style: styleKey } : {}),
         },
         pendingId,
         text,
@@ -457,13 +484,6 @@ function ChatPage() {
   async function logout() {
     await authClient.signOut();
     await navigate({ to: '/login' });
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void send();
-    }
   }
 
   const activeConversation =
@@ -565,22 +585,6 @@ function ChatPage() {
             </h2>
           </div>
           <div className="flex items-center gap-3 shrink-0">
-            <label className="text-[10px] uppercase tracking-[0.16em] text-muted">Model</label>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="bg-bg border border-border px-3 py-1.5 rounded-md text-sm font-mono focus:outline-none focus:border-fg transition-colors"
-            >
-              {models.length === 0 ? (
-                <option value="">No models</option>
-              ) : (
-                models.map((m) => (
-                  <option key={m.name} value={m.name}>
-                    {m.name}
-                  </option>
-                ))
-              )}
-            </select>
             <button
               type="button"
               onClick={() => setDrawerOpen((v) => !v)}
@@ -605,16 +609,24 @@ function ChatPage() {
             ) : messages.length === 0 ? (
               <div className="pt-20 text-center">
                 <p className="font-display text-4xl font-semibold tracking-tightest leading-tight">
-                  Ask anything.
+                  Ask Jeffy anything.
                 </p>
                 <p className="text-muted text-sm mt-3 font-mono">
-                  {model ? `Model · ${model}` : 'Select a model to begin'}
+                  {model ? `Model · ${model}` : 'Select a Jeff to begin'}
                 </p>
               </div>
             ) : (
               messages.map((m) => (
                 <div key={m.id} className="space-y-1">
                   <ChatBubble message={m} />
+                  {m.role === 'assistant' && m.status === 'complete' && m.responseStyle && (
+                    <div className="flex justify-start">
+                      <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-muted pl-5 inline-flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-fg/50" />
+                        {styleLabel(m.responseStyle)}
+                      </span>
+                    </div>
+                  )}
                   {m.role === 'assistant' && m.status === 'complete' && m.contextChars != null && (
                     <div className="flex justify-start">
                       <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted pl-5">
@@ -652,101 +664,64 @@ function ChatPage() {
           </div>
         )}
 
-        {/* Composer */}
-        <div className="border-t border-border bg-bg px-6 py-5">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex items-end gap-3 border border-border rounded-xl bg-panel/40 focus-within:border-fg transition-colors px-4 py-3 shadow-card">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                rows={1}
-                placeholder={
-                  model
-                    ? 'Message JeffGPT…  (Shift+Enter for newline)'
-                    : 'Load a model to start'
-                }
-                disabled={!model || sending}
-                className="flex-1 bg-transparent resize-none outline-none text-[15px] leading-relaxed placeholder:text-muted disabled:opacity-50"
-              />
-              <button
-                type="button"
-                onClick={() => void send()}
-                disabled={!model || !input.trim() || sending}
-                className="shrink-0 px-4 py-2 rounded-md bg-fg text-bg text-sm font-medium tracking-wide hover:bg-fg/85 transition-colors disabled:opacity-40"
-              >
-                {sending ? '…' : 'Send'}
-              </button>
-            </div>
-            <div className="flex items-center justify-between mt-2">
-              <p className="text-[10px] uppercase tracking-[0.14em] text-muted font-mono">
-                Enter to send · Shift+Enter for newline
-              </p>
-              {/*
-                Memory toggle — only meaningful on the first message of a new
-                conversation. Once activeId is set, the conversation's RAG
-                setting is sticky on the harness side and we disable the toggle.
-              */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRagEnabled((v) => !v)}
-                  disabled={activeId != null}
-                  title={
-                    activeId != null
-                      ? 'Memory is set when a conversation is first created'
-                      : 'Use past conversations as context'
-                  }
-                  className={[
-                    'text-[10px] uppercase tracking-[0.14em] font-mono px-2.5 py-1 rounded-full border transition-colors',
-                    activeId != null
-                      ? 'border-border text-muted opacity-50 cursor-not-allowed'
-                      : ragEnabled
-                        ? 'border-fg bg-fg text-bg'
-                        : 'border-border text-muted hover:border-fg hover:text-fg',
-                  ].join(' ')}
-                >
-                  {ragEnabled ? '● Memory on' : '○ Memory off'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setKnowledgeEnabled((v) => !v)}
-                  disabled={activeId != null}
-                  title={
-                    activeId != null
-                      ? 'Knowledge graph is set when a conversation is first created'
-                      : 'Extract entities and write concept edges to the knowledge graph'
-                  }
-                  className={[
-                    'text-[10px] uppercase tracking-[0.14em] font-mono px-2.5 py-1 rounded-full border transition-colors',
-                    activeId != null
-                      ? 'border-border text-muted opacity-50 cursor-not-allowed'
-                      : knowledgeEnabled
-                        ? 'border-fg bg-fg text-bg'
-                        : 'border-border text-muted hover:border-fg hover:text-fg',
-                  ].join(' ')}
-                >
-                  {knowledgeEnabled ? '● Knowledge on' : '○ Knowledge off'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSearchEnabled((v) => !v)}
-                  disabled={sending}
-                  title="Run a web search for this message"
-                  className={[
-                    'text-[10px] uppercase tracking-[0.14em] font-mono px-2.5 py-1 rounded-full border transition-colors',
-                    searchEnabled
-                      ? 'border-fg bg-fg text-bg'
-                      : 'border-border text-muted hover:border-fg hover:text-fg',
-                  ].join(' ')}
-                >
-                  {searchEnabled ? '● Search on' : '○ Search off'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Composer dock — model / style / toggles live here now */}
+        <ComposerDock
+          value={input}
+          onChange={setInput}
+          onSend={() => void send()}
+          sending={sending}
+          disabled={!model}
+          placeholder={model ? 'Message JeffGPT…' : 'Load a model to start'}
+          models={models}
+          model={model}
+          onModelChange={setModel}
+          styles={chatStyles?.styles}
+          styleKey={styleKey}
+          onStyleChange={(k) => {
+            setStyleKey(k);
+            if (activeId != null) {
+              try {
+                window.localStorage.setItem(`chatStyle:${activeId}`, k);
+              } catch {
+                /* ignore */
+              }
+            }
+          }}
+          toggles={
+            [
+              {
+                key: 'memory',
+                label: 'Memory',
+                active: ragEnabled,
+                disabled: activeId != null,
+                title:
+                  activeId != null
+                    ? 'Memory is set when a conversation is first created'
+                    : 'Use past conversations as context',
+                onToggle: () => setRagEnabled((v) => !v),
+              },
+              {
+                key: 'knowledge',
+                label: 'Knowledge',
+                active: knowledgeEnabled,
+                disabled: activeId != null,
+                title:
+                  activeId != null
+                    ? 'Knowledge graph is set when a conversation is first created'
+                    : 'Extract entities and write concept edges to the knowledge graph',
+                onToggle: () => setKnowledgeEnabled((v) => !v),
+              },
+              {
+                key: 'search',
+                label: 'Search',
+                active: searchEnabled,
+                disabled: sending,
+                title: 'Run a web search for this message',
+                onToggle: () => setSearchEnabled((v) => !v),
+              },
+            ] satisfies ComposerToggle[]
+          }
+        />
       </main>
 
       {/* ——— Right rail: Properties drawer ——— */}

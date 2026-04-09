@@ -22,6 +22,11 @@ export function listModels(): Promise<Response> {
   return harnessClient.get('/models', HARNESS_MODELS_TIMEOUT_MS);
 }
 
+export function listStyles(surface?: 'chat' | 'code'): Promise<Response> {
+  const q = surface ? `?surface=${surface}` : '';
+  return harnessClient.get(`/styles${q}`, HARNESS_MODELS_TIMEOUT_MS);
+}
+
 export function run(payload: HarnessRunRequest): Promise<Response> {
   return harnessClient.post('/run', payload, HARNESS_RUN_TIMEOUT_MS);
 }

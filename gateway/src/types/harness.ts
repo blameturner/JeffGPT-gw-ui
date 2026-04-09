@@ -18,6 +18,7 @@ export interface HarnessChatRequest {
   knowledge_enabled?: boolean;
   search_enabled?: boolean;
   search_consent_declined?: boolean;
+  response_style?: string;
 }
 
 export interface HarnessCodeFile {
@@ -48,4 +49,5 @@ export interface HarnessCodeRequest {
   temperature?: number;
   max_tokens?: number;
   codebase_collection?: string | null;
+  response_style?: string;
 }

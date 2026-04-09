@@ -66,7 +66,24 @@ export interface ChatMessageRow {
   model?: string;
   tokens_input?: number;
   tokens_output?: number;
+  /** Style preset used for this turn (e.g. "general", "devils_advocate"). */
+  response_style?: string | null;
   CreatedAt?: string;
+}
+
+export interface StyleOption {
+  key: string;
+  prompt: string;
+}
+
+export interface StyleSurface {
+  default: string;
+  styles: StyleOption[];
+}
+
+export interface StylesResponse {
+  chat?: StyleSurface;
+  code?: StyleSurface;
 }
 
 /**
@@ -129,6 +146,7 @@ export interface ChatStreamRequest {
    *  The harness uses this to inject an acknowledgment into the reply
    *  rather than silently trying another search. */
   search_consent_declined?: boolean;
+  response_style?: string;
 }
 
 export interface CodeFilePayload {
@@ -146,6 +164,7 @@ export interface CodeStreamRequest {
   temperature?: number;
   max_tokens?: number;
   codebase_collection?: string | null;
+  response_style?: string;
 }
 
 export interface CodeConversation {
@@ -167,6 +186,7 @@ export interface CodeMessageRow {
   content: string;
   mode?: 'plan' | 'execute' | 'debug' | null;
   files_json?: string | null;
+  response_style?: string | null;
   CreatedAt?: string;
 }
 
@@ -407,6 +427,10 @@ export const api = {
   health: () => http.get('api/health').json<{ status: string; harness: string }>(),
   orgMe: () => http.get('api/org/me').json<{ org: any; user: any }>(),
   models: () => http.get('api/models').json<{ models: LlmModel[] }>(),
+  styles: (surface?: 'chat' | 'code') =>
+    http
+      .get('api/styles', { searchParams: surface ? { surface } : {} })
+      .json<StylesResponse>(),
   conversations: () =>
     http.get('api/conversations').json<{ conversations: Conversation[] }>(),
   conversationMessages: (conversationId: number) =>

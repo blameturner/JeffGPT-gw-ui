@@ -33,6 +33,7 @@ const codeSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   max_tokens: z.number().int().positive().optional(),
   codebase_collection: z.string().optional().nullable(),
+  response_style: z.string().optional(),
 });
 
 async function forward(res: Response) {

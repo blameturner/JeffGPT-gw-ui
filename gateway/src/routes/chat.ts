@@ -25,6 +25,7 @@ const chatSchema = z.object({
   // The harness uses this to inject an acknowledgment into the reply rather
   // than silently re-attempting a search.
   search_consent_declined: z.boolean().optional(),
+  response_style: z.string().optional(),
 });
 
 chatRoute.post('/', async (c) => {

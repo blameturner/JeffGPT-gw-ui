@@ -19,6 +19,10 @@ export interface DisplayMessage {
   sources?: string[];
   /** True if a web search was attempted but returned no usable results. */
   searchFailed?: boolean;
+  /** Response-style key used for this turn (e.g. "general", "senior_review").
+   *  Rendered as a tiny badge next to the tokens footer so the user can see
+   *  which preset produced each reply when styles change mid-conversation. */
+  responseStyle?: string | null;
 }
 
 interface Props {

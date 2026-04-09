@@ -14,6 +14,7 @@ export {
   listAgents,
   listConversations,
   listModels,
+  listStyles,
   listWorkerTypes,
   reloadScheduler,
   run,

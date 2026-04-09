@@ -9,6 +9,7 @@ import { initNocodbTables } from './services/nocodb/index.js';
 import type { AuthVariables } from './types/auth.js';
 import { setupRoute } from './routes/setup.js';
 import { modelsRoute } from './routes/models.js';
+import { stylesRoute } from './routes/styles.js';
 import { workersRoute } from './routes/workers.js';
 import { runRoute } from './routes/run.js';
 import { chatRoute } from './routes/chat.js';
@@ -50,6 +51,7 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
 app.route('/api/setup', setupRoute);
 app.route('/api/models', modelsRoute);
+app.route('/api/styles', stylesRoute);
 app.route('/api/workers', workersRoute);
 app.route('/api/run', runRoute);
 app.route('/api/chat', chatRoute);

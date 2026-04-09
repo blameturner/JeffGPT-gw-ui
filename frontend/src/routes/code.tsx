@@ -5,9 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type DragEvent,
-  type KeyboardEvent,
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -17,8 +15,11 @@ import {
   type CodeFilePayload,
   type CodeMessageRow,
   type LlmModel,
+  type StyleSurface,
 } from '../lib/api';
 import { authClient } from '../lib/auth-client';
+import { ComposerDock } from '../components/ComposerDock';
+import { styleLabel } from '../lib/styles';
 
 type Mode = 'plan' | 'execute' | 'debug';
 
@@ -29,6 +30,7 @@ interface CodeMessage {
   content: string;
   status: 'complete' | 'streaming' | 'error';
   errorMessage?: string;
+  responseStyle?: string | null;
 }
 
 interface AttachedFile {
@@ -278,6 +280,9 @@ function CodePage() {
   const [useCodebase, setUseCodebase] = useState(false);
   const [codebaseCollection, setCodebaseCollection] = useState('mst-harness');
 
+  const [codeStyles, setCodeStyles] = useState<StyleSurface | null>(null);
+  const [styleKey, setStyleKey] = useState<string>('');
+
   const [runOutput, setRunOutput] = useState<Record<string, string>>({});
 
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -287,10 +292,17 @@ function CodePage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.models();
+        const [res, stylesRes] = await Promise.all([
+          api.models(),
+          api.styles('code').catch(() => null),
+        ]);
         if (cancelled) return;
         setModels(res.models);
         if (res.models[0]) setModel(res.models[0].name);
+        if (stylesRes?.code) {
+          setCodeStyles(stylesRes.code);
+          setStyleKey((prev) => prev || stylesRes.code!.default);
+        }
       } catch (err) {
         if (cancelled) return;
         setError((err as Error)?.message ?? 'Failed to load models');
@@ -336,6 +348,13 @@ function CodePage() {
     if (c.mode) setMode(c.mode);
     if (c.model) setModel(c.model);
     try {
+      const saved = window.localStorage.getItem(`codeStyle:${c.Id}`);
+      if (saved) setStyleKey(saved);
+      else if (codeStyles) setStyleKey(codeStyles.default);
+    } catch {
+      /* ignore */
+    }
+    try {
       const [{ messages: rows }, ws] = await Promise.all([
         api.code.messages(c.Id),
         api.code.workspace(c.Id),
@@ -346,6 +365,7 @@ function CodePage() {
         mode: (r.mode ?? 'plan') as Mode,
         content: r.role === 'user' ? cleanUserContent(r.content) : r.content,
         status: 'complete',
+        responseStyle: r.response_style ?? null,
       }));
       setMessages(loaded);
       const hydrated: AttachedFile[] = (ws.files ?? []).map((f) => ({
@@ -401,12 +421,6 @@ function CodePage() {
       ...prev.filter((p) => !encoded.find((e) => e.name === p.name)),
       ...encoded,
     ]);
-  }
-
-  async function onFilesPicked(e: ChangeEvent<HTMLInputElement>) {
-    const picked = Array.from(e.target.files ?? []);
-    await addFiles(picked);
-    e.target.value = '';
   }
 
   function removeFile(name: string) {
@@ -469,6 +483,7 @@ function CodePage() {
       mode: effectiveMode,
       content: '',
       status: 'streaming',
+      responseStyle: styleKey || null,
     };
     setMessages((m) => [...m, userMsg, pendingMsg]);
     if (!forcedText) setInput('');
@@ -495,6 +510,7 @@ function CodePage() {
           conversation_id: conversationId ?? undefined,
           codebase_collection:
             useCodebase && codebaseCollection ? codebaseCollection : undefined,
+          response_style: styleKey || undefined,
         },
         controller.signal,
       );
@@ -548,13 +564,6 @@ function CodePage() {
       if (streamAbortRef.current === controller) streamAbortRef.current = null;
       setSending(false);
       void refreshSessions();
-    }
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void send();
     }
   }
 
@@ -671,36 +680,6 @@ function CodePage() {
               Plan / Run / Debug
             </h2>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="flex items-center border border-border rounded-md overflow-hidden text-[11px] font-mono">
-              {(['plan', 'execute', 'debug'] as Mode[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setMode(m)}
-                  className={`px-2.5 py-1.5 transition-colors ${
-                    mode === m ? 'bg-fg text-bg' : 'text-muted hover:text-fg'
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="bg-bg border border-border px-3 py-1.5 rounded-md text-sm font-mono focus:outline-none focus:border-fg"
-            >
-              {models.length === 0 ? (
-                <option value="">No models</option>
-              ) : (
-                models.map((m) => (
-                  <option key={m.name} value={m.name}>
-                    {m.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
         </header>
 
         {approvedPlan && (
@@ -752,8 +731,14 @@ function CodePage() {
                         : 'bg-panel border border-border text-fg rounded-bl-sm markdown-body',
                     ].join(' ')}
                   >
-                    <div className="text-[9px] uppercase tracking-[0.16em] font-mono text-muted mb-1">
-                      {m.mode}
+                    <div className="text-[9px] uppercase tracking-[0.16em] font-mono text-muted mb-1 flex items-center gap-2">
+                      <span>{m.mode}</span>
+                      {m.role === 'assistant' && m.responseStyle && (
+                        <span className="inline-flex items-center gap-1 text-muted">
+                          <span className="w-1 h-1 rounded-full bg-fg/50" />
+                          {styleLabel(m.responseStyle)}
+                        </span>
+                      )}
                     </div>
                     {m.role === 'user' ? (
                       m.content
@@ -804,73 +789,76 @@ function CodePage() {
           </div>
         )}
 
-        <div className="border-t border-border px-6 py-4">
-          <div className="flex items-center gap-4 mb-2 text-[11px] font-mono text-muted">
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useCodebase}
-                onChange={(e) => setUseCodebase(e.target.checked)}
-              />
-              Search project codebase
-            </label>
-            {useCodebase && (
-              <input
-                value={codebaseCollection}
-                onChange={(e) => setCodebaseCollection(e.target.value)}
-                placeholder="collection"
-                className="bg-transparent border border-border px-2 py-0.5 rounded text-[11px] font-mono focus:outline-none focus:border-fg"
-              />
-            )}
-          </div>
-          {files.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {files.map((f) => (
-                <span
-                  key={f.name}
-                  className="text-[11px] font-mono px-2 py-1 rounded border border-border bg-panel/60 flex items-center gap-2"
+        <ComposerDock
+          value={input}
+          onChange={setInput}
+          onSend={() => void send()}
+          sending={sending}
+          disabled={!model}
+          placeholder={model ? `Describe the ${mode} task…` : 'Load a model to start'}
+          models={models}
+          model={model}
+          onModelChange={setModel}
+          styles={codeStyles?.styles}
+          styleKey={styleKey}
+          onStyleChange={(k) => {
+            setStyleKey(k);
+            if (conversationId != null) {
+              try {
+                window.localStorage.setItem(`codeStyle:${conversationId}`, k);
+              } catch {
+                /* ignore */
+              }
+            }
+          }}
+          toggles={[
+            {
+              key: 'codebase',
+              label: useCodebase ? `Codebase · ${codebaseCollection}` : 'Codebase RAG',
+              active: useCodebase,
+              title: 'Inject codebase search results into each turn',
+              onToggle: () => setUseCodebase((v) => !v),
+            },
+          ]}
+          leftRailSlot={
+            <div className="flex items-center border border-border rounded overflow-hidden text-[11px] font-mono bg-panel/60">
+              {(['plan', 'execute', 'debug'] as Mode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={`px-2.5 py-1.5 transition-colors ${
+                    mode === m ? 'bg-fg text-bg' : 'text-muted hover:text-fg'
+                  }`}
                 >
-                  {f.name}
-                  <span className="text-muted">({f.size}b)</span>
-                  <button
-                    onClick={() => removeFile(f.name)}
-                    className="text-muted hover:text-fg"
-                  >
-                    ×
-                  </button>
-                </span>
+                  {m}
+                </button>
               ))}
             </div>
-          )}
-          <div className="flex items-end gap-3 border border-border rounded-xl bg-panel/40 focus-within:border-fg px-4 py-3">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              rows={2}
-              placeholder={model ? `Describe the ${mode} task…` : 'Load a model to start'}
-              disabled={!model || sending}
-              className="flex-1 bg-transparent resize-none outline-none text-[14px] leading-relaxed placeholder:text-muted disabled:opacity-50"
-            />
-            <label className="shrink-0 text-[10px] uppercase tracking-[0.14em] font-mono text-muted border border-border rounded px-2 py-1.5 cursor-pointer hover:border-fg hover:text-fg">
-              + Files
-              <input
-                type="file"
-                multiple
-                onChange={(e) => void onFilesPicked(e)}
-                className="hidden"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => void send()}
-              disabled={!model || !input.trim() || sending}
-              className="shrink-0 px-4 py-2 rounded-md bg-fg text-bg text-sm font-medium hover:bg-fg/85 disabled:opacity-40"
-            >
-              {sending ? '…' : 'Send'}
-            </button>
-          </div>
-        </div>
+          }
+          onAttach={(picked) => void addFiles(picked)}
+          attachmentPreview={
+            files.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {files.map((f) => (
+                  <span
+                    key={f.name}
+                    className="text-[11px] font-mono px-2 py-1 rounded border border-border bg-panel/60 flex items-center gap-2"
+                  >
+                    {f.name}
+                    <span className="text-muted">({f.size}b)</span>
+                    <button
+                      onClick={() => removeFile(f.name)}
+                      className="text-muted hover:text-fg"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null
+          }
+        />
       </div>
 
       {/* Right rail */}

@@ -389,7 +389,7 @@ export const api = {
     triggerSource: (id: number) =>
       http.post(`api/enrichment/sources/${id}/trigger`).json<{ status: string }>(),
     flushSource: (id: number) =>
-      http.post(`api/enrichment/sources/${id}/flush`).json<{ ok: true; collections_touched: number }>(),
+      http.post(`api/enrichment/sources/${id}/flush`).json<{ ok: true; note?: string }>(),
     log: (params: {
       cycle_id?: string;
       event_type?: string;
@@ -436,7 +436,9 @@ export const api = {
         .get(`api/agents/${id}/outputs`)
         .json<{ outputs: AgentOutputRow[]; page: number; limit: number; total: number }>(),
     workerTypes: () =>
-      http.get('api/workers/types').json<{ types: string[] }>(),
+      http
+        .get('api/workers/types')
+        .json<{ types: { id: string; name: string; description: string }[] }>(),
   },
 
   schedules: {

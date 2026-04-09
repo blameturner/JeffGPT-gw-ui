@@ -218,7 +218,12 @@ function SourcesTab() {
   }
 
   async function flushChunks(id: number) {
-    if (!confirm('Remove all Chroma chunks for this source?')) return;
+    if (
+      !confirm(
+        'Reset this source? Clears the content hash so the next cycle re-scrapes the page. Existing Chroma chunks are overwritten on re-ingest.',
+      )
+    )
+      return;
     try {
       await api.enrichment.flushSource(id);
       load();

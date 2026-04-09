@@ -17,7 +17,9 @@ function humaniseCron(expr: string): string {
 
 function AgentsNewPage() {
   const navigate = useNavigate();
-  const [workerTypes, setWorkerTypes] = useState<string[]>([]);
+  const [workerTypes, setWorkerTypes] = useState<
+    { id: string; name: string; description: string }[]
+  >([]);
   const [form, setForm] = useState({
     agent_name: '',
     cron_expression: '0 3 * * *',
@@ -78,7 +80,9 @@ function AgentsNewPage() {
             />
             <datalist id="worker-types">
               {workerTypes.map((t) => (
-                <option key={t} value={t} />
+                <option key={t.id} value={t.id}>
+                  {t.name} — {t.description}
+                </option>
               ))}
             </datalist>
           </div>

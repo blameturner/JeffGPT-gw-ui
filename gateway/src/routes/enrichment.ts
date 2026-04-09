@@ -15,7 +15,6 @@ import {
   getSchedulerStatus,
   triggerScheduler,
 } from '../services/harness/index.js';
-import { deleteByUrl as chromaDeleteByUrl } from '../services/chroma/client.js';
 import type { AuthVariables } from '../types/auth.js';
 
 export const enrichmentRoute = new Hono<{ Variables: AuthVariables }>();
@@ -45,7 +44,6 @@ const EVENT_TYPES = [
   'budget_exhausted',
   'deferred',
 ] as const;
-const eventTypeEnum = z.enum(EVENT_TYPES);
 
 type ScrapeTargetRow = {
   Id: number;
@@ -292,19 +290,25 @@ enrichmentRoute.post('/sources/:id/trigger', async (c) => {
 });
 
 enrichmentRoute.post('/sources/:id/flush', async (c) => {
+  // "Flush" v1: reset `content_hash` and `chunk_count` on the Nocodb row. The
+  // next enrichment cycle will see a missing hash and force a full re-scrape.
+  // The old Chroma chunks linger until the harness grows a proper per-url
+  // delete endpoint — we cannot reach Chroma directly from the gateway because
+  // collections are org-scoped (`org_{id}_scraped_*`) and chromadb 1.5.5 uses
+  // the v2 tenant/database HTTP API, which is fiddly to construct without the
+  // Python client's defaults.
   const { orgId } = getAuthContext(c);
   try {
     const existing = await loadOwnedSource(orgId, c.req.param('id'));
     if (!existing) return c.json({ error: 'not_found' }, 404);
-    const hit = await chromaDeleteByUrl(existing.url);
     await patchRow('scrape_targets', existing.Id, {
       chunk_count: 0,
       content_hash: null,
     });
-    return c.json({ ok: true, collections_touched: hit });
+    return c.json({ ok: true, note: 'hash_reset_only' });
   } catch (err) {
     console.error('[enrichment] flush source failed', err);
-    return c.json({ error: 'chroma_error' }, 502);
+    return c.json({ error: 'nocodb_error' }, 502);
   }
 });
 
@@ -433,7 +437,7 @@ enrichmentRoute.patch('/suggestions/:id', async (c) => {
 
 // --- Scheduler proxies ------------------------------------------------------
 
-enrichmentRoute.get('/status', async (c) => {
+enrichmentRoute.get('/status', async () => {
   try {
     const res = await getSchedulerStatus();
     return forward(res);
@@ -442,7 +446,7 @@ enrichmentRoute.get('/status', async (c) => {
   }
 });
 
-enrichmentRoute.post('/trigger', async (c) => {
+enrichmentRoute.post('/trigger', async () => {
   try {
     const res = await triggerScheduler();
     return forward(res);
@@ -452,9 +456,15 @@ enrichmentRoute.post('/trigger', async (c) => {
 });
 
 enrichmentRoute.get('/graph/coverage', async (c) => {
+  // Harness does not (yet) expose /graph/coverage — we return an empty list so
+  // the frontend tab renders its empty state cleanly instead of surfacing a
+  // 502. Once the harness ships the endpoint, remove this short-circuit.
   const { orgId } = getAuthContext(c);
   try {
     const res = await getGraphCoverage(Number(orgId));
+    if (res.status === 404) {
+      return c.json({ nodes: [] });
+    }
     return forward(res);
   } catch (err) {
     return mapHarnessError(err);

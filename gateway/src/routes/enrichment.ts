@@ -9,7 +9,7 @@ import {
   listPage,
   listWhere,
   patchRow,
-} from '../services/nocodb';
+} from '../services/nocodb/index.js';
 import {
   getGraphCoverage,
   getSchedulerStatus,

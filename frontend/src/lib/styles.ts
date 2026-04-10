@@ -1,10 +1,4 @@
-/**
- * Display-name map for response-style keys returned by the harness /styles
- * endpoint. Backend stays the source of truth for keys and prompt text;
- * the UI owns presentation.
- */
 export const STYLE_LABELS: Record<string, string> = {
-  // Chat surface
   general: 'General',
   architect: 'Architect',
   operator: 'Operator',
@@ -20,7 +14,6 @@ export const STYLE_LABELS: Record<string, string> = {
   deep_dive: 'Deep Dive',
   socratic: 'Socratic',
   eli5: 'ELI5',
-  // Code surface
   explain: 'Explain',
   review: 'Review',
   refactor: 'Refactor',

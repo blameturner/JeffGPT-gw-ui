@@ -1,6 +1,9 @@
 import { memo, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 export type MessageStatus = 'complete' | 'pending' | 'streaming' | 'error' | 'system' | 'searching';
 
@@ -9,38 +12,22 @@ export interface DisplayMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   status: MessageStatus;
-  /** Wall-clock start used by the pending elapsed counter. */
   startedAt?: number;
   tokensIn?: number;
   tokensOut?: number;
   contextChars?: number;
   errorMessage?: string;
-  /** Web search citations — 'Title: URL' strings. */
   sources?: string[];
-  /** True if a web search was attempted but returned no usable results. */
   searchFailed?: boolean;
-  /** Response-style key used for this turn (e.g. "general", "senior_review").
-   *  Rendered as a tiny badge next to the tokens footer so the user can see
-   *  which preset produced each reply when styles change mid-conversation. */
   responseStyle?: string | null;
-  /** Captured user text for this turn — used by the Retry button so an
-   *  interrupted send can be re-dispatched without asking the user to
-   *  retype their message. */
   sourceUserText?: string;
 }
 
 interface Props {
   message: DisplayMessage;
-  /** Invoked when the user clicks "Retry" on an errored assistant bubble. */
   onRetry?: (message: DisplayMessage) => void;
 }
 
-/**
- * Assistant messages render as Markdown (GFM). User messages are pre-wrap
- * plain text — we never reinterpret operator input. Additional lifecycle
- * states: pending (with elapsed timer), streaming (markdown + cursor),
- * error, and synthetic system notices (e.g. summarisation).
- */
 export function ChatBubble({ message, onRetry }: Props) {
   if (message.role === 'user') {
     return (
@@ -143,7 +130,6 @@ export function ChatBubble({ message, onRetry }: Props) {
   );
 }
 
-/** Live elapsed counter in seconds. Ticks every 500ms while mounted. */
 function ElapsedTimer({ startedAt }: { startedAt?: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -156,14 +142,12 @@ function ElapsedTimer({ startedAt }: { startedAt?: number }) {
   return <span className="not-italic font-sans text-[11px]">· {s}s</span>;
 }
 
-/**
- * Memoised on `content` so unrelated re-renders (elapsed timers, sibling
- * message updates) don't re-parse the markdown AST on every tick.
- */
+// Memoised on content so elapsed-timer ticks don't re-parse the markdown AST
 const MarkdownBody = memo(function MarkdownBody({ content }: { content: string }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
       components={{
         h1: (props) => (
           <h1

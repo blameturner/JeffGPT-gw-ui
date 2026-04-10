@@ -4,23 +4,12 @@ interface SheetProps {
   open: boolean;
   side: 'left' | 'right';
   onClose: () => void;
-  /** Width on ≥md. On mobile the sheet takes ~min(92vw, cap). */
   widthClass?: string;
-  /** Hide on breakpoints where the panel should become a permanent column.
-   *  Defaults to "md:hidden" — i.e. the sheet is mobile-only. Set to "" if
-   *  you want it to work on all sizes (the code page's right rail does this
-   *  at the sm..lg range). */
   mobileOnlyClass?: string;
   children: ReactNode;
   label?: string;
 }
 
-/**
- * Off-canvas panel used for the chat sidebar, chat properties drawer, and
- * code page sidebars/rails on small screens. Tap-backdrop to dismiss, ESC
- * to dismiss, body-scroll locked while open, focus trap left to the
- * browser's default — the content panels are scrollable regions themselves.
- */
 export function Sheet({
   open,
   side,
@@ -30,7 +19,6 @@ export function Sheet({
   children,
   label,
 }: SheetProps) {
-  // Dismiss on ESC.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -40,7 +28,6 @@ export function Sheet({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  // Lock body scroll under the sheet.
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -80,7 +67,6 @@ export function Sheet({
   );
 }
 
-/** Standard burger / close icon button used in page headers. */
 export function IconButton({
   onClick,
   label,

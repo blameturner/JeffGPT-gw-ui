@@ -9,6 +9,9 @@ import {
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import {
   api,
   type CodeConversation,
@@ -37,20 +40,14 @@ interface CodeMessage {
   status: 'complete' | 'streaming' | 'error';
   errorMessage?: string;
   responseStyle?: string | null;
-  /** Captured user text — used by Retry so an interrupted send can
-   *  re-dispatch without asking the user to retype. */
   sourceUserText?: string;
-  /** Mode the send was dispatched with — survives mode switches between
-   *  retry attempts so a failed Execute turn retries as Execute. */
   sourceMode?: Mode;
-  /** Approved plan that was injected on the original send, if any. */
   sourceApprovedPlan?: string | null;
 }
 
 interface AttachedFile {
   name: string;
   content_b64: string;
-  /** Decoded utf-8 if available — used by the diff view. */
   content?: string;
   size: number;
 }
@@ -58,9 +55,7 @@ interface AttachedFile {
 interface CodeBlock {
   lang: string;
   code: string;
-  /** Detected filename if the block is file-targeted. */
   file?: string;
-  /** Stable index in the source markdown (used as a React key). */
   index: number;
 }
 
@@ -68,11 +63,6 @@ function uid() {
   return Math.random().toString(36).slice(2);
 }
 
-/**
- * Parse fenced code blocks and detect "file-targeted" ones — either by a
- * leading `// file: path` / `# file: path` comment or by a preceding
- * `### path/to/file` heading line.
- */
 function parseCodeBlocks(md: string): CodeBlock[] {
   const out: CodeBlock[] = [];
   const re = /```([\w+-]*)\n([\s\S]*?)```/g;
@@ -139,13 +129,10 @@ function downloadBlob(name: string, content: string) {
 
 const DESTRUCTIVE_RE = /\b(rm\s+-rf|DROP\s+TABLE|DROP\s+DATABASE|curl\s+-X\s+DELETE|mkfs|sudo\s+rm)\b/i;
 
-/** Strip legacy `<attached_files>...</attached_files>` wrappers from user
- *  messages saved before the backend started storing clean user text. */
+// Strips legacy wrappers from messages saved before the backend started storing clean user text
 function cleanUserContent(s: string): string {
   return s.replace(/<attached_files>[\s\S]*?<\/attached_files>\n*/g, '').trim();
 }
-
-// --- Tiny line-diff renderer (no external dep) ------------------------------
 
 type DiffRow =
   | { kind: 'same'; left: string; right: string }
@@ -214,15 +201,8 @@ function DiffView({ before, after }: { before: string; after: string }) {
   );
 }
 
-// --- Shiki-rendered code block ---------------------------------------------
-
 import { highlightToTokens, type ShikiToken } from '../lib/shiki';
 
-/**
- * Renders a fenced code block with Shiki syntax highlighting. Shiki returns
- * structured token data (text + colour per token) which we render as plain
- * React spans — no HTML injection, no sanitisation story to manage.
- */
 function ShikiBlock({ code, lang }: { code: string; lang: string }) {
   const [lines, setLines] = useState<ShikiToken[][] | null>(null);
 
@@ -271,8 +251,6 @@ function ShikiBlock({ code, lang }: { code: string; lang: string }) {
     </pre>
   );
 }
-
-// --- Code block renderer ----------------------------------------------------
 
 function CodeBlockCard({
   block,
@@ -326,8 +304,6 @@ function CodeBlockCard({
   );
 }
 
-// ----------------------------------------------------------------------------
-
 function CodePage() {
   const [models, setModels] = useState<LlmModel[]>([]);
   const [model, setModel] = useState<string>('');
@@ -355,8 +331,6 @@ function CodePage() {
 
   const [runOutput, setRunOutput] = useState<Record<string, string>>({});
 
-  // Mobile off-canvas state: sessions list on the left, code output rail on
-  // the right. On md+ these are permanent columns and the state is unused.
   const [sessionsSheetOpen, setSessionsSheetOpen] = useState(false);
   const [railSheetOpen, setRailSheetOpen] = useState(false);
 
@@ -375,7 +349,8 @@ function CodePage() {
         ]);
         if (cancelled) return;
         setModels(res.models);
-        if (res.models[0]) setModel((prev) => prev || res.models[0].name);
+        const coder = res.models.find((m) => m.role === 'coder');
+        if (coder || res.models[0]) setModel((prev) => prev || coder?.name || res.models[0].name);
         if (stylesRes?.code) {
           setCodeStyles(stylesRes.code);
           setStyleKey((prev) => prev || stylesRes.code!.default);
@@ -392,8 +367,6 @@ function CodePage() {
     };
   }, []);
 
-  // Retry models + sessions load when the page returns from background
-  // if the first attempt was killed by an iOS suspend.
   useOnVisibilityResume(() => {
     if (!bootOkRef.current) {
       void (async () => {
@@ -403,20 +376,17 @@ function CodePage() {
             api.styles('code').catch(() => null),
           ]);
           setModels(res.models);
-          setModel((prev) => prev || res.models[0]?.name || '');
+          const coder = res.models.find((m) => m.role === 'coder');
+          setModel((prev) => prev || coder?.name || res.models[0]?.name || '');
           if (stylesRes?.code) {
             setCodeStyles(stylesRes.code);
             setStyleKey((prev) => prev || stylesRes.code!.default);
           }
           bootOkRef.current = true;
           setError(null);
-        } catch {
-          /* try again next resume */
-        }
+        } catch {}
       })();
     }
-    // Always re-pull the sessions list on resume — cheap and keeps the
-    // sidebar fresh if another device created a session in the meantime.
     void refreshSessions();
   });
 
@@ -458,9 +428,7 @@ function CodePage() {
       const saved = window.localStorage.getItem(`codeStyle:${c.Id}`);
       if (saved) setStyleKey(saved);
       else if (codeStyles) setStyleKey(codeStyles.default);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     try {
       const [{ messages: rows }, ws] = await Promise.all([
         api.code.messages(c.Id),
@@ -683,8 +651,6 @@ function CodePage() {
 
   function retryMessage(m: CodeMessage) {
     if (!m.sourceUserText) return;
-    // Drop the errored assistant bubble + its preceding user bubble
-    // so send() can append a fresh pair.
     setMessages((ms) => {
       const idx = ms.findIndex((x) => x.id === m.id);
       if (idx <= 0) return ms.filter((x) => x.id !== m.id);
@@ -741,8 +707,6 @@ function CodePage() {
   const lastBlocks = lastAssistant ? parseCodeBlocks(lastAssistant.content) : [];
   const fileTargeted = lastBlocks.filter((b) => b.file);
 
-  // ——— Inline render helpers: reused by both the desktop columns AND the
-  //     mobile off-canvas Sheets so nothing drifts out of sync.
   const sidebarBody = (opts?: { onPick?: () => void }) => (
     <>
       <div className="border-b border-border px-4 py-3 flex items-center justify-between">
@@ -940,7 +904,7 @@ function CodePage() {
                       </div>
                     ) : (
                       <>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{m.content}</ReactMarkdown>
                         <div className="flex flex-wrap gap-2 mt-3">
                           {m.mode === 'plan' && m.status === 'complete' && (
                             <button
@@ -998,9 +962,7 @@ function CodePage() {
             if (conversationId != null) {
               try {
                 window.localStorage.setItem(`codeStyle:${conversationId}`, k);
-              } catch {
-                /* ignore */
-              }
+              } catch {}
             }
           }}
           toggles={[

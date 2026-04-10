@@ -2,7 +2,10 @@
   "name": "mst-ag",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["gateway", "frontend"],
+  "workspaces": [
+    "gateway",
+    "frontend"
+  ],
   "scripts": {
     "dev:gateway": "npm -w gateway run dev",
     "dev:frontend": "npm -w frontend run dev",
@@ -10,5 +13,8 @@
     "publish:gateway": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/blameturner/mst-ag-gateway:latest ./gateway --push",
     "publish:frontend": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/blameturner/mst-ag-frontend:latest ./frontend --push",
     "publish": "npm run publish:gateway && npm run publish:frontend"
+  },
+  "dependencies": {
+    "dockerode": "^4.0.10"
   }
 }

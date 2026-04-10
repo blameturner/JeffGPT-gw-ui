@@ -41,9 +41,7 @@ export interface Worker {
 export interface LlmModel {
   name: string;
   url: string;
-  /** Human-facing role label from the harness catalog (may equal name). */
   role?: string;
-  /** Upstream provider model id, e.g. "gemma-4-e4b-it". */
   model_id?: string;
 }
 
@@ -66,7 +64,6 @@ export interface ChatMessageRow {
   model?: string;
   tokens_input?: number;
   tokens_output?: number;
-  /** Style preset used for this turn (e.g. "general", "devils_advocate"). */
   response_style?: string | null;
   CreatedAt?: string;
 }
@@ -86,10 +83,6 @@ export interface StylesResponse {
   code?: StyleSurface;
 }
 
-/**
- * Server-Sent Event emitted by the streaming /api/chat and /api/run/stream
- * endpoints. Matches the harness contract exactly.
- */
 export type StreamEvent =
   | { type: 'chunk'; text: string }
   | { type: 'meta'; conversation_id?: number; mode?: 'plan' | 'execute' | 'debug' }
@@ -104,10 +97,6 @@ export type StreamEvent =
       duration_seconds?: number;
       mode?: 'plan' | 'execute' | 'debug';
       output?: string;
-      /** Intentional pause waiting for a UI resolution. Currently only
-       *  `"search_consent"` is emitted by the harness. When present the
-       *  stream is NOT a failed/empty reply — hold the assistant bubble
-       *  until the user resolves the dialog. */
       awaiting?: 'search_consent';
     }
   | { type: 'summarised'; removed: number; summary_chars: number }
@@ -117,13 +106,9 @@ export type StreamEvent =
       type: 'search_complete';
       source_count: number;
       sources: string[];
-      /** New — false when the web search returned zero useful results. */
       ok?: boolean;
     }
   | {
-      /** Harness wants the user to approve a live web search before
-       *  generating. Paired with a `done { awaiting: "search_consent" }`
-       *  from the backend. */
       type: 'search_consent_required';
       query: string;
       reason: string;
@@ -142,9 +127,6 @@ export interface ChatStreamRequest {
   rag_collection?: string | null;
   knowledge_enabled?: boolean;
   search_enabled?: boolean;
-  /** Set true when the user explicitly declined the consent dialog.
-   *  The harness uses this to inject an acknowledgment into the reply
-   *  rather than silently trying another search. */
   search_consent_declined?: boolean;
   response_style?: string;
 }
@@ -172,7 +154,7 @@ export interface CodeConversation {
   org_id: number;
   model: string;
   title: string;
-  /** Current mode for this code session (stored in rag_collection column). */
+  // mode is stored in the rag_collection column on the backend
   mode?: 'plan' | 'execute' | 'debug';
   rag_collection?: string | null;
   CreatedAt?: string;
@@ -273,8 +255,6 @@ export interface ConversationSummary {
   tasks: unknown[];
 }
 
-// --- Enrichment -------------------------------------------------------------
-
 export const ENRICHMENT_CATEGORIES = [
   'documentation',
   'news',
@@ -357,8 +337,6 @@ export interface GraphCoverageNode {
   degree: number;
 }
 
-// --- Agents & schedules -----------------------------------------------------
-
 export interface AgentSummary {
   Id: number;
   name: string;
@@ -401,6 +379,22 @@ export interface AgentSchedule {
   product: string;
   active: boolean;
   reload_warning?: string;
+}
+
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+}
+
+export interface LogLine {
+  container: string;
+  id: string;
+  ts: string;
+  text: string;
+  stderr?: boolean;
 }
 
 export interface ScheduleCreateBody {
@@ -446,9 +440,9 @@ export const api = {
       .patch(`api/conversations/${conversationId}`, { json: { title } })
       .json<{ conversation: Conversation }>(),
   chatStream: (body: ChatStreamRequest, signal?: AbortSignal) =>
-    postSSE('api/chat', body, signal),
+    streamJob('api/chat', body, signal),
   codeStream: (body: CodeStreamRequest, signal?: AbortSignal) =>
-    postSSE('api/code', body, signal),
+    streamJob('api/code', body, signal),
   code: {
     conversations: () =>
       http
@@ -472,7 +466,7 @@ export const api = {
         .json<{ conversation: CodeConversation }>(),
   },
   runStream: (body: RunStreamRequest, signal?: AbortSignal) =>
-    postSSE('api/run/stream', body, signal),
+    streamJob('api/run/stream', body, signal),
 
   enrichment: {
     sources: () =>
@@ -544,6 +538,18 @@ export const api = {
         .json<{ types: { id: string; name: string; description: string }[] }>(),
   },
 
+  logs: {
+    containers: () =>
+      http.get('api/logs/containers').json<{ containers: DockerContainer[] }>(),
+    streamUrl: (params?: { since?: number; tail?: number }) => {
+      const sp = new URLSearchParams();
+      if (params?.since != null) sp.set('since', String(params.since));
+      if (params?.tail != null) sp.set('tail', String(params.tail));
+      const qs = sp.toString();
+      return `${gatewayUrl()}/api/logs/stream${qs ? `?${qs}` : ''}`;
+    },
+  },
+
   schedules: {
     list: () => http.get('api/schedules').json<{ schedules: AgentSchedule[] }>(),
     create: (body: ScheduleCreateBody) =>
@@ -555,11 +561,9 @@ export const api = {
   },
 };
 
-/**
- * POST `body` as JSON and return an async iterator over parsed SSE events.
- * Shared by chatStream + runStream. The caller aborts via the signal.
- */
-async function* postSSE(
+// POST to start a job, then open an EventSource to stream events.
+// Reconnects with cursor on disconnect so no events are lost.
+async function* streamJob(
   path: string,
   body: unknown,
   signal?: AbortSignal,
@@ -567,52 +571,90 @@ async function* postSSE(
   const res = await fetch(`${gatewayUrl()}/${path}`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
   });
 
-  if (!res.ok || !res.body) {
-    // Gateway returned a JSON error shape (see chat.ts / run.ts 502/504 paths).
+  if (!res.ok) {
     let detail = '';
     try {
       detail = await res.text();
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     yield { type: 'error', message: `HTTP ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ''}` };
     return;
   }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  const { job_id } = (await res.json()) as { job_id: string };
+  if (!job_id) {
+    yield { type: 'error', message: 'No job_id returned' };
+    return;
+  }
 
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+  let cursor = 0;
+  let done = false;
 
-      // SSE frames are separated by a blank line.
-      let sep: number;
-      while ((sep = buffer.indexOf('\n\n')) !== -1) {
-        const raw = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        const line = raw.replace(/^data:\s?/, '').trim();
-        if (!line || line === '[DONE]') continue;
-        try {
-          yield JSON.parse(line) as StreamEvent;
-        } catch (err) {
-          yield { type: 'error', message: `Bad SSE frame: ${(err as Error).message}` };
+  while (!done) {
+    if (signal?.aborted) return;
+
+    const events = await new Promise<StreamEvent[]>((resolve, reject) => {
+      const batch: StreamEvent[] = [];
+      const streamUrl = `${gatewayUrl()}/api/stream/${encodeURIComponent(job_id)}?cursor=${cursor}`;
+      const es = new EventSource(streamUrl, { withCredentials: true });
+
+      const cleanup = () => {
+        es.close();
+        signal?.removeEventListener('abort', onAbort);
+        visCleanup();
+      };
+
+      const onAbort = () => {
+        cleanup();
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+
+      // Reconnect on tab resume in case the connection silently died
+      let visHandler: (() => void) | null = null;
+      const visCleanup = () => {
+        if (visHandler) {
+          document.removeEventListener('visibilitychange', visHandler);
+          visHandler = null;
         }
-      }
-    }
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch {
-      /* ignore */
+      };
+      visHandler = () => {
+        if (document.visibilityState === 'visible') {
+          cleanup();
+          resolve(batch);
+        }
+      };
+      document.addEventListener('visibilitychange', visHandler);
+
+      signal?.addEventListener('abort', onAbort);
+
+      es.onmessage = (e) => {
+        if (e.data === '[DONE]') {
+          done = true;
+          cleanup();
+          resolve(batch);
+          return;
+        }
+        if (e.lastEventId) cursor = parseInt(e.lastEventId, 10) + 1;
+        try {
+          batch.push(JSON.parse(e.data) as StreamEvent);
+        } catch {}
+      };
+
+      es.onerror = () => {
+        cleanup();
+        resolve(batch);
+      };
+    });
+
+    for (const ev of events) yield ev;
+
+    // If not done, wait before reconnecting
+    if (!done) {
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
 }

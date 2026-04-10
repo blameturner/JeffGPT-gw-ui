@@ -1,10 +1,6 @@
 import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router';
 import { AppShell } from '../components/AppShell';
 
-/**
- * Paths that render bare (no nav shell). Everything else gets wrapped in
- * the AppShell so the top navigation is always one click away.
- */
 const BARE_PATHS = new Set(['/', '/login', '/setup']);
 
 function RootLayout() {

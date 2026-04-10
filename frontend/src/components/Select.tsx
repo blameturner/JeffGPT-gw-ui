@@ -9,9 +9,7 @@ import {
 export interface SelectOption<T extends string | number> {
   value: T;
   label: string;
-  /** Optional secondary label rendered in muted text on the right. */
   hint?: string;
-  /** Optional tooltip shown on hover of both trigger (when active) and row. */
   description?: string;
 }
 
@@ -19,26 +17,14 @@ interface SelectProps<T extends string | number> {
   value: T | '';
   onChange: (v: T) => void;
   options: SelectOption<T>[];
-  /** Shown when no option is selected / value === ''. */
   placeholder?: string;
-  /** Minimum popover width. Defaults to 220px. */
   menuMinWidth?: number;
-  /** Open above (default, bottom anchor) or below the trigger. */
   position?: 'above' | 'below';
   className?: string;
   leading?: ReactNode;
   disabled?: boolean;
 }
 
-/**
- * Shared dropdown primitive used throughout the app so every picker has
- * identical visuals and behaviour. Renders a fixed-position popover
- * anchored to the trigger's viewport rect — escapes any `overflow:auto`
- * ancestor (e.g. the composer control rail).
- *
- * Keyboard: Enter/Space toggles, ESC closes, ↑/↓ move, Enter selects.
- * Click-away backdrop closes.
- */
 export function Select<T extends string | number>({
   value,
   onChange,
@@ -82,7 +68,6 @@ export function Select<T extends string | number>({
     };
   }, [open, position]);
 
-  // Keyboard support while open.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -109,7 +94,6 @@ export function Select<T extends string | number>({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, hover, options, onChange]);
 
-  // Seed the keyboard cursor to the active option on open.
   useEffect(() => {
     if (open) setHover(activeIdx >= 0 ? activeIdx : 0);
   }, [open, activeIdx]);

@@ -30,7 +30,6 @@ function SetupPage() {
   }
 
   async function toUserError(err: any): Promise<string> {
-    // Map known API error codes to friendly copy; don't render raw backend text.
     const messages: Record<string, string> = {
       already_configured: 'This system has already been set up. Please sign in.',
       invalid_body: 'Please check the form fields and try again.',
@@ -44,9 +43,7 @@ function SetupPage() {
       const payload = await err?.response?.json?.();
       const code = payload?.error;
       if (typeof code === 'string' && messages[code]) return messages[code];
-    } catch {
-      // fall through
-    }
+    } catch {}
     return 'Setup failed. Please try again.';
   }
 
@@ -129,7 +126,6 @@ export const Route = createFileRoute('/setup')({
     try {
       status = await api.setupStatus();
     } catch {
-      // Gateway unreachable — render the setup page and let the user try.
       return;
     }
     if (status.configured) {

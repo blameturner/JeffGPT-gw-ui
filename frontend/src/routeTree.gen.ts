@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LogsRouteImport } from './routes/logs'
 import { Route as EnrichmentRouteImport } from './routes/enrichment'
 import { Route as CodeRouteImport } from './routes/code'
 import { Route as ChatRouteImport } from './routes/chat'
@@ -28,6 +29,11 @@ const SetupRoute = SetupRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogsRoute = LogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EnrichmentRoute = EnrichmentRouteImport.update({
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/code': typeof CodeRoute
   '/enrichment': typeof EnrichmentRoute
   '/login': typeof LoginRoute
+  '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/code': typeof CodeRoute
   '/enrichment': typeof EnrichmentRoute
   '/login': typeof LoginRoute
+  '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/code': typeof CodeRoute
   '/enrichment': typeof EnrichmentRoute
   '/login': typeof LoginRoute
+  '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/enrichment'
     | '/login'
+    | '/logs'
     | '/setup'
     | '/agents/$id'
     | '/agents/new'
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/enrichment'
     | '/login'
+    | '/logs'
     | '/setup'
     | '/agents/$id'
     | '/agents/new'
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/enrichment'
     | '/login'
+    | '/logs'
     | '/setup'
     | '/agents/$id'
     | '/agents/new'
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   CodeRoute: typeof CodeRoute
   EnrichmentRoute: typeof EnrichmentRoute
   LoginRoute: typeof LoginRoute
+  LogsRoute: typeof LogsRoute
   SetupRoute: typeof SetupRoute
 }
 
@@ -164,6 +177,13 @@ declare module '@tanstack/react-router' {
       path: '/setup'
       fullPath: '/setup'
       preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logs': {
+      id: '/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof LogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -264,6 +284,7 @@ const rootRouteChildren: RootRouteChildren = {
   CodeRoute: CodeRoute,
   EnrichmentRoute: EnrichmentRoute,
   LoginRoute: LoginRoute,
+  LogsRoute: LogsRoute,
   SetupRoute: SetupRoute,
 }
 export const routeTree = rootRouteImport

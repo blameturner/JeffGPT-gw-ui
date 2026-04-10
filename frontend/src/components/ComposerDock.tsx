@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useRef,
   type ChangeEvent,
   type KeyboardEvent,
@@ -28,34 +29,15 @@ interface ComposerDockProps {
   models: LlmModel[];
   model: string;
   onModelChange: (v: string) => void;
-
-  /** Available response-style presets for this surface. */
   styles?: StyleOption[];
   styleKey?: string;
   onStyleChange?: (k: string) => void;
-
-  /** Pill-group toggles (memory / knowledge / search, etc.). */
   toggles?: ComposerToggle[];
-
-  /** Optional custom slot rendered at the far left of the control rail
-   *  (used by the code page for the Plan/Execute/Debug segmented switch). */
   leftRailSlot?: ReactNode;
-
-  /** Optional file attach support. When `onAttach` is set, the paperclip
-   *  button is rendered and files picked are forwarded as a raw FileList. */
   onAttach?: (files: File[]) => void;
   attachmentPreview?: ReactNode;
 }
 
-/**
- * The dock is the command centre of both chat and code — it holds the model,
- * style, memory/knowledge/search toggles, the optional mode switcher, the
- * file attach control, and the message composer. It's intentionally
- * "instrument-panel" flavoured: two stacked rows, thin dividers between
- * zones, tiny mono labels floating above each control. Cohesive with the
- * rest of the app (font-display / font-sans / border-border / panel tokens)
- * but pushes the density and structure further than the prior inline rail.
- */
 export function ComposerDock({
   value,
   onChange,
@@ -75,6 +57,14 @@ export function ComposerDock({
   attachmentPreview,
 }: ComposerDockProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [value]);
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -104,8 +94,6 @@ export function ComposerDock({
               <Divider />
             </>
           )}
-
-          {/* ——— Model ——— */}
           <DockZone label="Model">
             <Select
               value={model}
@@ -120,7 +108,6 @@ export function ComposerDock({
             />
           </DockZone>
 
-          {/* ——— Style picker ——— */}
           {styles && styles.length > 0 && (
             <>
               <Divider />
@@ -140,7 +127,6 @@ export function ComposerDock({
             </>
           )}
 
-          {/* ——— Toggles ——— */}
           {toggles && toggles.length > 0 && (
             <>
               <Divider />
@@ -180,7 +166,6 @@ export function ComposerDock({
         </div>
       </div>
 
-      {/* Composer row ---------------------------------------------------------- */}
       <div className="px-3 sm:px-5 pt-1 pb-3 sm:pb-4">
         {attachmentPreview && <div className="mb-2">{attachmentPreview}</div>}
         <div className="flex items-end gap-3 border border-border rounded-xl bg-panel/40 focus-within:border-fg transition-colors px-4 py-3 shadow-card">
@@ -204,13 +189,14 @@ export function ComposerDock({
             </>
           )}
           <textarea
+            ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
             placeholder={placeholder ?? 'Type a message…'}
             disabled={disabled || sending}
-            className="flex-1 bg-transparent resize-none outline-none text-[15px] leading-relaxed placeholder:text-muted disabled:opacity-50 min-h-[1.6em] max-h-[220px]"
+            className="flex-1 bg-transparent resize-none outline-none text-[15px] leading-relaxed placeholder:text-muted disabled:opacity-50 min-h-[1.6em] max-h-[220px] overflow-y-auto"
           />
           <button
             type="button"
@@ -230,7 +216,6 @@ export function ComposerDock({
   );
 }
 
-/** A single labelled group of controls in the instrument-panel rail. */
 function DockZone({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1 shrink-0">

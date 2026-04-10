@@ -21,9 +21,6 @@ const chatSchema = z.object({
   rag_collection: z.string().optional().nullable(),
   knowledge_enabled: z.boolean().optional(),
   search_enabled: z.boolean().optional(),
-  // Set by the frontend when the user clicks "Deny" in the consent dialog.
-  // The harness uses this to inject an acknowledgment into the reply rather
-  // than silently re-attempting a search.
   search_consent_declined: z.boolean().optional(),
   response_style: z.string().optional(),
 });
@@ -46,17 +43,8 @@ chatRoute.post('/', async (c) => {
         502,
       );
     }
-    // Stream the SSE body w/o buffering
-    const contentType = res.headers.get('content-type') ?? 'text/event-stream';
-    return new Response(res.body, {
-      status: res.status,
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      },
-    });
+    const data = await res.json();
+    return c.json(data);
   } catch (err) {
     if (err instanceof FetchTimeoutError) {
       return c.json({ error: 'harness_timeout' }, 504);

@@ -5,18 +5,12 @@ import {
   type BundledTheme,
 } from 'shiki';
 
-/**
- * Singleton Shiki highlighter. We lazy-initialise on first use and reuse
- * across the app so every code block share the same WASM engine + loaded
- * grammars. Languages are loaded incrementally via `loadLanguage`.
- */
 let highlighterPromise: Promise<Highlighter> | null = null;
 const loadedLangs = new Set<string>();
 
 export const LIGHT_THEME: BundledTheme = 'github-light';
 export const DARK_THEME: BundledTheme = 'github-dark';
 
-/** Common language aliases the agent tends to use → real Shiki IDs. */
 const LANG_ALIAS: Record<string, BundledLanguage> = {
   js: 'javascript',
   jsx: 'jsx',
@@ -67,12 +61,6 @@ export interface ShikiToken {
   fontStyle?: number;
 }
 
-/**
- * Highlight `code` into a rectangular array of token lines. Each token
- * carries its text + resolved colour from the theme — callers render the
- * tokens themselves as React elements, so no innerHTML assignment is
- * needed and the renderer stays within React's XSS guarantees.
- */
 export async function highlightToTokens(
   code: string,
   lang?: string,

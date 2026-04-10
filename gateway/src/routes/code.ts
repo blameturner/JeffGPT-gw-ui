@@ -209,16 +209,8 @@ codeRoute.post('/', async (c) => {
         502,
       );
     }
-    const contentType = res.headers.get('content-type') ?? 'text/event-stream';
-    return new Response(res.body, {
-      status: res.status,
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      },
-    });
+    const data = await res.json();
+    return c.json(data);
   } catch (err) {
     if (err instanceof FetchTimeoutError) {
       return c.json({ error: 'harness_timeout' }, 504);

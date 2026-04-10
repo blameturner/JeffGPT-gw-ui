@@ -5,7 +5,6 @@ import { authClient } from '../lib/auth-client';
 interface NavItem {
   to: string;
   label: string;
-  /** Match this prefix when deciding "is this tab active?". Defaults to `to`. */
   matchPrefix?: string;
 }
 
@@ -14,14 +13,9 @@ const NAV: NavItem[] = [
   { to: '/code', label: 'Code' },
   { to: '/agents', label: 'Agents', matchPrefix: '/agents' },
   { to: '/enrichment', label: 'Enrichment' },
+  { to: '/logs', label: 'Logs' },
 ];
 
-/**
- * Top-level application shell: brand + horizontal nav + sign-out, with the
- * current route rendered in the flex-1 body. Routes that should NOT get the
- * shell (login / setup / index redirect) opt out by not wrapping themselves
- * here — the shell is applied from __root.tsx based on pathname.
- */
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });

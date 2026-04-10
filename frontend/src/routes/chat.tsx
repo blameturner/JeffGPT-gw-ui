@@ -28,46 +28,30 @@ function uid() {
 function ChatPage() {
   const navigate = useNavigate();
 
-  // sidebar state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [activeId, setActiveId] = useState<number | null>(null);
 
-  // models
   const [models, setModels] = useState<LlmModel[]>([]);
   const [model, setModel] = useState<string>('');
 
-  // response-style preset (per-turn, persisted per-conversation in localStorage)
   const [chatStyles, setChatStyles] = useState<StyleSurface | null>(null);
   const [styleKey, setStyleKey] = useState<string>('');
 
-  // thread state
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
-  // composer
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Memory (RAG) — only applied on the first message of a NEW conversation.
-  // Once the conversation exists on the harness, its rag setting is sticky
-  // and this flag is ignored.
+  // RAG/knowledge flags only apply on the first turn of a new conversation; harness ignores them afterwards
   const [ragEnabled, setRagEnabled] = useState(false);
-  // Knowledge graph writes (FalkorDB) — same first-turn-only semantics.
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
-  // Web search — per-message toggle, resets to off after each send.
   const [searchEnabled, setSearchEnabled] = useState(false);
-  // Abort controller for the in-flight stream, so we can cancel on unmount
-  // or new-chat.
   const streamAbortRef = useRef<AbortController | null>(null);
 
-  // Session-level: bypass the consent dialog. When true, every /chat request
-  // goes out with search_enabled: true and the modal never appears.
   const [alwaysAllowSearch, setAlwaysAllowSearch] = useState(false);
 
-  // Consent dialog state. Populated when the harness emits
-  // `search_consent_required`. The pendingUserText + pendingMsgId let us
-  // re-POST the same message on allow/deny without double-adding a bubble.
   const [consentRequest, setConsentRequest] = useState<{
     query: string;
     reason: string;
@@ -75,12 +59,9 @@ function ChatPage() {
     pendingAssistantId: string;
   } | null>(null);
 
-  // Properties drawer (right rail). Hosts rename + stats + details.
-  // Manual refresh only — stats never auto-hydrate.
   const [stats, setStats] = useState<ConversationSummary | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  /** Mobile-only: off-canvas sidebar with conversation history. */
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
   const [renaming, setRenaming] = useState(false);
@@ -103,16 +84,10 @@ function ChatPage() {
   }
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Visibility tracking — iOS suspends backgrounded tabs and kills any
-  // in-flight fetches; errors that fire in that window are not real.
   const vis = useWasRecentlyHidden();
   const initialLoadOkRef = useRef(false);
 
-  // Initial load: conversations + models + styles in parallel. Exposed
-  // as a ref'd function so we can re-run it automatically when the page
-  // returns from background if the first attempt failed.
   const runInitialLoad = useRef<() => Promise<void>>(() => Promise.resolve());
   runInitialLoad.current = async () => {
     try {
@@ -123,7 +98,8 @@ function ChatPage() {
       ]);
       setConversations(convRes.conversations);
       setModels(modelsRes.models);
-      setModel((prev) => prev || modelsRes.models[0]?.name || '');
+      const reasoner = modelsRes.models.find((m) => m.role === 'reasoner');
+      setModel((prev) => prev || reasoner?.name || modelsRes.models[0]?.name || '');
       if (stylesRes?.chat) {
         setChatStyles(stylesRes.chat);
         setStyleKey((prev) => prev || stylesRes.chat!.default);
@@ -131,7 +107,6 @@ function ChatPage() {
       initialLoadOkRef.current = true;
       setError(null);
     } catch (err) {
-      // Quietly drop iOS-suspend errors — retry happens on resume.
       if (isTransientNetworkError(err)) return;
       setError((err as Error)?.message ?? 'Failed to load');
     } finally {
@@ -143,28 +118,17 @@ function ChatPage() {
     void runInitialLoad.current();
   }, []);
 
-  // If the tab was killed before the first successful load, retry the
-  // moment it comes back to the foreground.
   useOnVisibilityResume(() => {
     if (!initialLoadOkRef.current) void runInitialLoad.current();
   });
 
 
-  // Auto-scroll on new messages.
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
       behavior: 'smooth',
     });
   }, [messages]);
-
-  // Auto-grow the composer textarea.
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
-  }, [input]);
 
   async function selectConversation(c: Conversation) {
     setActiveId(c.Id);
@@ -173,14 +137,11 @@ function ChatPage() {
     setError(null);
     setStats(null);
     setRenameTitle(c.title || '');
-    // Restore per-conversation style choice, falling back to catalogue default.
     try {
       const saved = window.localStorage.getItem(`chatStyle:${c.Id}`);
       if (saved) setStyleKey(saved);
       else if (chatStyles) setStyleKey(chatStyles.default);
-    } catch {
-      /* ignore storage errors */
-    }
+    } catch {}
     try {
       const res = await api.conversationMessages(c.Id);
       setMessages(
@@ -214,24 +175,14 @@ function ChatPage() {
     setRagEnabled(false);
     setKnowledgeEnabled(false);
     setSearchEnabled(false);
-    textareaRef.current?.focus();
   }
 
-  // Abort any in-flight stream on unmount.
   useEffect(() => {
     return () => {
       streamAbortRef.current?.abort();
     };
   }, []);
 
-  /**
-   * Drive an SSE chat stream into the pending assistant bubble. Extracted so
-   * that both the initial send AND the consent-resolution re-post can reuse
-   * the same reducer loop without duplicating logic.
-   *
-   * Returns the `conversation_id` the harness confirmed, or null if the
-   * stream didn't reach a terminal `done`.
-   */
   async function runChatStream(
     body: Parameters<typeof api.chatStream>[0],
     pendingId: string,
@@ -257,8 +208,6 @@ function ChatPage() {
         if (ev.type === 'search_complete') {
           const sources = ev.sources;
           if (ev.ok === false) {
-            // Render a subtle failure chip on the assistant bubble. The model
-            // itself will acknowledge the miss in its upcoming reply text.
             setMessages((ms) =>
               ms.map((x) =>
                 x.id === pendingId
@@ -309,8 +258,6 @@ function ChatPage() {
         } else if (ev.type === 'done') {
           if (ev.conversation_id != null) newConversationId = ev.conversation_id;
           if (ev.awaiting === 'search_consent') {
-            // Intentional pause. Park the pending bubble in an "awaiting"
-            // state and return — the caller opens the modal.
             setMessages((ms) =>
               ms.map((x) =>
                 x.id === pendingId
@@ -349,23 +296,16 @@ function ChatPage() {
         }
       }
 
-      // First message on a brand-new conversation — persist the returned
-      // id, but only once we're PAST the consent pause (otherwise the
-      // harness hasn't actually committed the user row yet).
+      // Only persist the id once past any consent pause — harness hasn't committed the user row until then
       if (isFirstMessage && newConversationId != null && !consentNeeded) {
         setActiveId(newConversationId);
         try {
           const convRes = await api.conversations();
           setConversations(convRes.conversations);
-        } catch {
-          /* non-fatal */
-        }
+        } catch {}
       }
     } catch (err) {
       const aborted = (err as Error)?.name === 'AbortError';
-      // iOS backgrounding kills in-flight fetches and surfaces a
-      // TypeError "Load failed". Treat those as silent aborts — the
-      // user will retry when they come back.
       const transient =
         isTransientNetworkError(err) && (vis.isHidden() || vis.justResumed());
       if (!aborted && !transient) {
@@ -377,8 +317,6 @@ function ChatPage() {
         );
         setError(msg);
       } else if (transient) {
-        // Drop the pending bubble entirely so the composer is usable
-        // again on resume. The user text stays in their history.
         setMessages((ms) => ms.filter((x) => x.id !== pendingId));
       }
     } finally {
@@ -424,9 +362,6 @@ function ChatPage() {
     setSending(true);
     setError(null);
 
-    // rag_enabled / knowledge_enabled only go out on the first message of a
-    // new chat. The harness persists the setting on the conversations row
-    // and ignores these fields on subsequent turns.
     const isFirstMessage = activeId == null;
     const searchForThisTurn = searchEnabled || alwaysAllowSearch;
 
@@ -446,19 +381,15 @@ function ChatPage() {
       );
     } finally {
       setSending(false);
-      // Search is per-message — reset after each turn. (The session-level
-      // "always allow" toggle is separate and persists.)
       setSearchEnabled(false);
     }
   }
 
-  /** User clicked "Allow" in the consent dialog: re-POST with search_enabled. */
   async function resolveConsent(allow: boolean) {
     if (!consentRequest) return;
     const { pendingUserText, pendingAssistantId } = consentRequest;
     setConsentRequest(null);
 
-    // Reset the parked assistant bubble back to pending + fresh timer.
     setMessages((ms) =>
       ms.map((x) =>
         x.id === pendingAssistantId
@@ -486,7 +417,6 @@ function ChatPage() {
     }
   }
 
-  /** Save rename to harness and update sidebar + header in place. */
   async function saveRename() {
     if (activeId == null) return;
     const title = renameTitle.trim();
@@ -662,9 +592,6 @@ function ChatPage() {
                     message={m}
                     onRetry={(mm) => {
                       if (!mm.sourceUserText) return;
-                      // Drop the errored assistant bubble AND the user
-                      // message that triggered it, then re-send — the
-                      // normal send() flow will add a fresh pair.
                       setMessages((ms) => {
                         const idx = ms.findIndex((x) => x.id === mm.id);
                         if (idx <= 0) return ms.filter((x) => x.id !== mm.id);
@@ -739,9 +666,7 @@ function ChatPage() {
             if (activeId != null) {
               try {
                 window.localStorage.setItem(`chatStyle:${activeId}`, k);
-              } catch {
-                /* ignore */
-              }
+              } catch {}
             }
           }}
           toggles={
@@ -1127,11 +1052,6 @@ function ChatPage() {
   );
 }
 
-/**
- * Shared sidebar body for the chat page — rendered both in the permanent
- * desktop column (md+) and inside the mobile off-canvas Sheet. Factored out
- * so both callers get identical markup without JSX duplication.
- */
 function SidebarBody({
   onNewChat,
   conversations,

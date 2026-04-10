@@ -158,8 +158,6 @@ function StatusBadge({ status }: { status: SchedulerStatus | null }) {
   );
 }
 
-// --- Sources tab ------------------------------------------------------------
-
 function SourcesTab() {
   const [sources, setSources] = useState<ScrapeTarget[]>([]);
   const [loading, setLoading] = useState(true);
@@ -358,8 +356,6 @@ function SourcesTab() {
   );
 }
 
-// --- Suggestions tab --------------------------------------------------------
-
 function SuggestionsTab() {
   const [items, setItems] = useState<SuggestedScrapeTarget[]>([]);
   const [loading, setLoading] = useState(true);
@@ -489,8 +485,6 @@ function SuggestionsTab() {
   );
 }
 
-// --- Log tab ----------------------------------------------------------------
-
 function LogTab() {
   const [entries, setEntries] = useState<EnrichmentLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -522,8 +516,6 @@ function LogTab() {
       .then((r) => {
         setEntries(r.entries);
         setTotal(r.total);
-        // Remember every cycle id we've seen so the filter dropdown grows
-        // with the user's browsing, even across paginated windows.
         setKnownCycles((prev) => {
           const seen = new Set(prev);
           for (const e of r.entries) if (e.cycle_id) seen.add(e.cycle_id);
@@ -699,8 +691,6 @@ function LogRow({ row }: { row: EnrichmentLogEntry }) {
   );
 }
 
-// --- Graph coverage tab -----------------------------------------------------
-
 function GraphCoverageTab() {
   const [nodes, setNodes] = useState<GraphCoverageNode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -758,8 +748,6 @@ function GraphCoverageTab() {
     </div>
   );
 }
-
-// --- Small form helpers -----------------------------------------------------
 
 function LabeledInput({
   label,

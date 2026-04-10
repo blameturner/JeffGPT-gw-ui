@@ -1,6 +1,4 @@
-// Runtime config loaded from /config.js (see index.html). The container entrypoint
-// rewrites /config.js at startup from the GATEWAY_URL env var, so nothing is baked
-// into the bundle at build time.
+// Container entrypoint rewrites /config.js at startup from GATEWAY_URL env var, so nothing is baked into the bundle
 declare global {
   interface Window {
     __ENV__?: { GATEWAY_URL?: string };

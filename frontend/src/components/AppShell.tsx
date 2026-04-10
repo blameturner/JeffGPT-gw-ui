@@ -14,6 +14,7 @@ const NAV: NavItem[] = [
   { to: '/agents', label: 'Agents', matchPrefix: '/agents' },
   { to: '/enrichment', label: 'Enrichment' },
   { to: '/logs', label: 'Logs' },
+  { to: '/architecture', label: 'How it works' },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

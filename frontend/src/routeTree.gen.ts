@@ -10,11 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetupRouteImport } from './routes/setup'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogsRouteImport } from './routes/logs'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as EnrichmentRouteImport } from './routes/enrichment'
 import { Route as CodeRouteImport } from './routes/code'
 import { Route as ChatRouteImport } from './routes/chat'
+import { Route as ArchitectureRouteImport } from './routes/architecture'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AgentsNewRouteImport } from './routes/agents.new'
@@ -26,14 +27,14 @@ const SetupRoute = SetupRouteImport.update({
   path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LogsRoute = LogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EnrichmentRoute = EnrichmentRouteImport.update({
@@ -49,6 +50,11 @@ const CodeRoute = CodeRouteImport.update({
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArchitectureRoute = ArchitectureRouteImport.update({
+  id: '/architecture',
+  path: '/architecture',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsRoute = AgentsRouteImport.update({
@@ -80,6 +86,7 @@ const AgentsIdRunsRunIdRoute = AgentsIdRunsRunIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRouteWithChildren
+  '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
   '/enrichment': typeof EnrichmentRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRouteWithChildren
+  '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
   '/enrichment': typeof EnrichmentRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agents': typeof AgentsRouteWithChildren
+  '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
   '/enrichment': typeof EnrichmentRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/agents'
+    | '/architecture'
     | '/chat'
     | '/code'
     | '/enrichment'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/agents'
+    | '/architecture'
     | '/chat'
     | '/code'
     | '/enrichment'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/agents'
+    | '/architecture'
     | '/chat'
     | '/code'
     | '/enrichment'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentsRoute: typeof AgentsRouteWithChildren
+  ArchitectureRoute: typeof ArchitectureRoute
   ChatRoute: typeof ChatRoute
   CodeRoute: typeof CodeRoute
   EnrichmentRoute: typeof EnrichmentRoute
@@ -212,6 +225,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/chat'
       preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/architecture': {
+      id: '/architecture'
+      path: '/architecture'
+      fullPath: '/architecture'
+      preLoaderRoute: typeof ArchitectureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents': {
@@ -280,6 +300,7 @@ const AgentsRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsRoute: AgentsRouteWithChildren,
+  ArchitectureRoute: ArchitectureRoute,
   ChatRoute: ChatRoute,
   CodeRoute: CodeRoute,
   EnrichmentRoute: EnrichmentRoute,

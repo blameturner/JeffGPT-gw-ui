@@ -162,6 +162,18 @@ export function getEnrichmentAgentStatus(id: number): Promise<Response> {
   return harnessClient.get(`/enrichment/agents/${id}/status`, HARNESS_SCHEDULER_TIMEOUT_MS);
 }
 
+export function listCodebases(orgId: number): Promise<Response> {
+  return harnessClient.get(`/codebases?org_id=${orgId}`, HARNESS_ENRICHMENT_TIMEOUT_MS);
+}
+
+export function createCodebase(body: unknown): Promise<Response> {
+  return harnessClient.post('/codebases', body, HARNESS_ENRICHMENT_TIMEOUT_MS);
+}
+
+export function indexCodebase(id: number, body: unknown): Promise<Response> {
+  return harnessClient.post(`/codebases/${id}/index`, body, HARNESS_RUN_TIMEOUT_MS);
+}
+
 export function listWorkerTypes(): Promise<Response> {
   return harnessClient.get('/workers/types', HARNESS_ENRICHMENT_TIMEOUT_MS);
 }

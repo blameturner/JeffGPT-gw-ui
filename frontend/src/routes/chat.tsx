@@ -51,6 +51,25 @@ function ChatPage() {
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
   const [searchEnabled, setSearchEnabled] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleRetry(convId: number) {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = setTimeout(async () => {
+      retryTimerRef.current = null;
+      if (activeIdRef.current !== convId) return;
+      try {
+        const res = await api.conversationMessages(convId);
+        if (activeIdRef.current !== convId) return;
+        const status = res.conversation?.status;
+        if (status === 'processing') {
+          scheduleRetry(convId);
+        } else {
+          setMessages(hydrateMessages(res.messages));
+        }
+      } catch {}
+    }, 4000);
+  }
 
   const [alwaysAllowSearch, setAlwaysAllowSearch] = useState(false);
 
@@ -147,6 +166,7 @@ function ChatPage() {
   }
 
   async function selectConversation(c: Conversation) {
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setActiveId(c.Id);
     setModel(c.model || model);
     setLoadingMessages(true);
@@ -172,7 +192,11 @@ function ChatPage() {
           startedAt: Date.now(),
         }]);
         setLoadingMessages(false);
-        pollForCompletion(c.Id);
+        scheduleRetry(c.Id);
+      } else if (convStatus === 'error') {
+        setMessages(loaded);
+        setError('The model encountered an error processing this conversation.');
+        setLoadingMessages(false);
       } else {
         setMessages(loaded);
         setLoadingMessages(false);
@@ -183,33 +207,8 @@ function ChatPage() {
     }
   }
 
-  async function pollForCompletion(convId: number) {
-    while (activeIdRef.current === convId) {
-      await new Promise((r) => setTimeout(r, 2000));
-      if (activeIdRef.current !== convId) return;
-      try {
-        const res = await api.conversationMessages(convId);
-        const loaded = hydrateMessages(res.messages);
-        const status = res.conversation?.status;
-        if (status === 'processing') {
-          setMessages([...loaded, {
-            id: `pending-${convId}`,
-            role: 'assistant',
-            content: '',
-            status: 'pending',
-            startedAt: Date.now(),
-          }]);
-        } else {
-          setMessages(loaded);
-          return;
-        }
-      } catch {
-        return;
-      }
-    }
-  }
-
   function newChat() {
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setActiveId(null);
     setMessages([]);
     setError(null);

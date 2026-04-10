@@ -21,6 +21,7 @@ import { schedulesRoute } from './routes/schedules.js';
 import { orgRoute } from './routes/org.js';
 import { healthRoute } from './routes/health.js';
 import { streamRoute } from './routes/stream.js';
+import { codebasesRoute } from './routes/codebases.js';
 import { logsRoute } from './routes/logs.js';
 import { rateLimit } from './middleware/rateLimit.js';
 
@@ -65,6 +66,7 @@ app.route('/api/schedules', schedulesRoute);
 app.route('/api/org', orgRoute);
 app.route('/api/health', healthRoute);
 app.route('/api/stream', streamRoute);
+app.route('/api/codebases', codebasesRoute);
 app.route('/api/logs', logsRoute);
 
 app.get('/', (c) => c.json({ name: 'mst-ag-gateway', ok: true }));

@@ -148,6 +148,8 @@ export interface CodeStreamRequest {
   conversation_id?: number | null;
   temperature?: number;
   max_tokens?: number;
+  rag_enabled?: boolean;
+  knowledge_enabled?: boolean;
   codebase_collection?: string | null;
   response_style?: string;
 }
@@ -392,6 +394,18 @@ export interface AgentSummary {
   [k: string]: unknown;
 }
 
+export interface Codebase {
+  id: number;
+  org_id: number;
+  name: string;
+  description: string;
+  collection_name: string;
+  source: string | null;
+  records: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export interface AgentRun {
   Id: number;
   agent_id: number;
@@ -611,6 +625,14 @@ export const api = {
       http.patch(`api/schedules/${id}`, { json: body }).json<AgentSchedule>(),
     delete: (id: number) =>
       http.delete(`api/schedules/${id}`).json<{ ok: true; reload_warning?: string }>(),
+  },
+
+  codebases: {
+    list: () => http.get('api/codebases').json<{ codebases: Codebase[] }>(),
+    create: (body: { name: string; description?: string }) =>
+      http.post('api/codebases', { json: body }).json<Codebase>(),
+    index: (id: number, files: Array<{ name: string; content: string }>) =>
+      http.post(`api/codebases/${id}/index`, { json: { files } }).json<{ indexed: number }>(),
   },
 };
 

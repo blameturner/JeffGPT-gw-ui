@@ -14,6 +14,7 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import {
   api,
+  type Codebase,
   type CodeConversation,
   type CodeFilePayload,
   type CodeMessageRow,
@@ -304,6 +305,145 @@ function CodeBlockCard({
   );
 }
 
+function CodebaseManager({ codebases, onUpdate }: { codebases: Codebase[]; onUpdate: (cbs: Codebase[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [indexing, setIndexing] = useState<number | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function create() {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      const cb = await api.codebases.create({ name: name.trim(), description: description.trim() });
+      onUpdate([...codebases, cb]);
+      setName('');
+      setDescription('');
+      setCreating(false);
+      setStatus(`Created "${cb.name}"`);
+    } catch (err) {
+      setStatus((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function uploadFiles(codebaseId: number, fileList: FileList) {
+    setIndexing(codebaseId);
+    setStatus(null);
+    try {
+      const files: Array<{ name: string; content: string }> = [];
+      for (const f of Array.from(fileList)) {
+        const text = await f.text();
+        files.push({ name: f.webkitRelativePath || f.name, content: text });
+      }
+      const res = await api.codebases.index(codebaseId, files);
+      setStatus(`Indexed ${res.indexed} file${res.indexed !== 1 ? 's' : ''}`);
+      const updated = await api.codebases.list();
+      onUpdate(updated.codebases);
+    } catch (err) {
+      setStatus((err as Error).message);
+    } finally {
+      setIndexing(null);
+    }
+  }
+
+  return (
+    <div className="border-t border-border">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full px-4 sm:px-6 py-3 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-muted hover:text-fg transition-colors"
+      >
+        <span>Codebases ({codebases.length})</span>
+        <span>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 sm:px-6 pb-4 space-y-3">
+          {codebases.map((cb) => (
+            <div key={cb.id} className="flex items-center justify-between gap-2 py-1">
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium truncate">{cb.name}</p>
+                <p className="text-[10px] text-muted font-sans">
+                  {cb.records} records · {cb.collection_name}
+                </p>
+              </div>
+              <div className="shrink-0 flex items-center gap-1">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={indexing === cb.id}
+                  className="text-[10px] uppercase tracking-[0.12em] font-sans border border-border px-2 py-1 rounded hover:border-fg hover:text-fg transition-colors disabled:opacity-50"
+                >
+                  {indexing === cb.id ? 'Indexing…' : 'Upload'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      void uploadFiles(cb.id, e.target.files);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+
+          {creating ? (
+            <div className="space-y-2 border border-border rounded p-3 bg-panel/20">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Codebase name"
+                className="w-full bg-transparent border border-border rounded px-2 py-1 text-[12px] font-mono outline-none focus:border-fg placeholder:text-muted/40"
+              />
+              <input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Description (optional)"
+                className="w-full bg-transparent border border-border rounded px-2 py-1 text-[12px] font-mono outline-none focus:border-fg placeholder:text-muted/40"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void create()}
+                  disabled={saving || !name.trim()}
+                  className="text-[10px] uppercase tracking-[0.12em] font-sans border border-fg px-3 py-1 rounded hover:bg-fg hover:text-bg transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'Creating…' : 'Create'}
+                </button>
+                <button
+                  onClick={() => setCreating(false)}
+                  className="text-[10px] uppercase tracking-[0.12em] font-sans text-muted hover:text-fg px-2 py-1"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setCreating(true)}
+              className="text-[10px] uppercase tracking-[0.12em] font-sans text-muted hover:text-fg"
+            >
+              + New codebase
+            </button>
+          )}
+
+          {status && (
+            <p className="text-[11px] font-sans text-muted">{status}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CodePage() {
   const [models, setModels] = useState<LlmModel[]>([]);
   const [model, setModel] = useState<string>('');
@@ -325,8 +465,11 @@ function CodePage() {
   const [checklist, setChecklist] = useState<string[]>([]);
   const [checked, setChecked] = useState<Record<number, boolean>>({});
 
+  const [ragEnabled, setRagEnabled] = useState(false);
+  const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
   const [useCodebase, setUseCodebase] = useState(false);
-  const [codebaseCollection, setCodebaseCollection] = useState('mst-harness');
+  const [codebaseCollection, setCodebaseCollection] = useState('');
+  const [codebases, setCodebases] = useState<Codebase[]>([]);
 
   const [codeStyles, setCodeStyles] = useState<StyleSurface | null>(null);
   const [styleKey, setStyleKey] = useState<string>('');
@@ -337,6 +480,24 @@ function CodePage() {
   const [railSheetOpen, setRailSheetOpen] = useState(false);
 
   const streamAbortRef = useRef<AbortController | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleCodeRetry(convId: number) {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = setTimeout(async () => {
+      retryTimerRef.current = null;
+      if (conversationIdRef.current !== convId) return;
+      try {
+        const res = await api.code.messages(convId);
+        if (conversationIdRef.current !== convId) return;
+        if (res.conversation?.status === 'processing') {
+          scheduleCodeRetry(convId);
+        } else {
+          setMessages(hydrateCodeMessages(res.messages));
+        }
+      } catch {}
+    }, 4000);
+  }
   const vis = useWasRecentlyHidden();
   const bootOkRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -345,12 +506,14 @@ function CodePage() {
     let cancelled = false;
     (async () => {
       try {
-        const [res, stylesRes] = await Promise.all([
+        const [res, stylesRes, codebasesRes] = await Promise.all([
           api.models(),
           api.styles('code').catch(() => null),
+          api.codebases.list().catch(() => ({ codebases: [] })),
         ]);
         if (cancelled) return;
         setModels(res.models);
+        setCodebases(codebasesRes.codebases);
         const coder = res.models.find((m) => m.role === 'coder');
         if (coder || res.models[0]) setModel((prev) => prev || coder?.name || res.models[0].name);
         if (stylesRes?.code) {
@@ -426,6 +589,7 @@ function CodePage() {
   }
 
   async function selectSession(c: CodeConversation) {
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setConversationId(c.Id);
     setMessages([]);
     setFiles([]);
@@ -456,7 +620,10 @@ function CodePage() {
           content: '',
           status: 'streaming',
         }]);
-        pollCodeCompletion(c.Id);
+        scheduleCodeRetry(c.Id);
+      } else if (convStatus === 'error') {
+        setMessages(loaded);
+        setError('The model encountered an error processing this session.');
       } else {
         setMessages(loaded);
       }
@@ -473,32 +640,9 @@ function CodePage() {
     }
   }
 
-  async function pollCodeCompletion(convId: number) {
-    while (conversationIdRef.current === convId) {
-      await new Promise((r) => setTimeout(r, 2000));
-      if (conversationIdRef.current !== convId) return;
-      try {
-        const res = await api.code.messages(convId);
-        const loaded = hydrateCodeMessages(res.messages);
-        if (res.conversation?.status === 'processing') {
-          setMessages([...loaded, {
-            id: `pending-${convId}`,
-            role: 'assistant',
-            mode: res.conversation.mode ?? 'plan',
-            content: '',
-            status: 'streaming',
-          }]);
-        } else {
-          setMessages(loaded);
-          return;
-        }
-      } catch {
-        return;
-      }
-    }
-  }
 
   function newSession() {
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setConversationId(null);
     setMessages([]);
     setFiles([]);
@@ -506,6 +650,8 @@ function CodePage() {
     setChecklist([]);
     setChecked({});
     setError(null);
+    setRagEnabled(false);
+    setKnowledgeEnabled(false);
   }
 
   async function renameSession(c: CodeConversation) {
@@ -620,6 +766,7 @@ function CodePage() {
     streamAbortRef.current = controller;
 
     try {
+      const isFirstMessage = conversationId == null;
       const stream = api.codeStream(
         {
           model,
@@ -628,6 +775,8 @@ function CodePage() {
           approved_plan: effectiveApproved,
           files: payloadFiles.length > 0 ? payloadFiles : undefined,
           conversation_id: conversationId ?? undefined,
+          ...(isFirstMessage && ragEnabled ? { rag_enabled: true } : {}),
+          ...(isFirstMessage && knowledgeEnabled ? { knowledge_enabled: true } : {}),
           codebase_collection:
             useCodebase && codebaseCollection ? codebaseCollection : undefined,
           response_style: styleKey || undefined,
@@ -987,6 +1136,29 @@ function CodePage() {
           </div>
         )}
 
+        {useCodebase && codebases.length > 0 && (
+          <div className="px-4 py-2 border-t border-border bg-panel/30 flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.14em] font-sans text-muted shrink-0">Codebase</span>
+            <select
+              value={codebaseCollection}
+              onChange={(e) => setCodebaseCollection(e.target.value)}
+              className="bg-transparent border border-border rounded px-2 py-1 text-[12px] font-mono outline-none focus:border-fg text-fg"
+            >
+              <option value="">Select a codebase…</option>
+              {codebases.map((cb) => (
+                <option key={cb.id} value={cb.collection_name}>
+                  {cb.name} ({cb.records} records)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {useCodebase && codebases.length === 0 && (
+          <div className="px-4 py-2 border-t border-border bg-panel/30 text-[11px] font-sans text-muted">
+            No codebases indexed yet. Create one from the code page settings.
+          </div>
+        )}
+
         <ComposerDock
           value={input}
           onChange={setInput}
@@ -1009,8 +1181,24 @@ function CodePage() {
           }}
           toggles={[
             {
+              key: 'memory',
+              label: 'Memory',
+              active: ragEnabled,
+              disabled: conversationId != null,
+              title: 'Per-conversation recall (first turn only)',
+              onToggle: () => setRagEnabled((v) => !v),
+            },
+            {
+              key: 'knowledge',
+              label: 'Knowledge',
+              active: knowledgeEnabled,
+              disabled: conversationId != null,
+              title: 'Graph extraction + shared knowledge (first turn only)',
+              onToggle: () => setKnowledgeEnabled((v) => !v),
+            },
+            {
               key: 'codebase',
-              label: useCodebase ? `Codebase · ${codebaseCollection}` : 'Codebase RAG',
+              label: useCodebase && codebaseCollection ? `Codebase · ${codebaseCollection}` : 'Codebase',
               active: useCodebase,
               title: 'Inject codebase search results into each turn',
               onToggle: () => setUseCodebase((v) => !v),
@@ -1142,6 +1330,7 @@ function CodePage() {
             lastBlocks.map((b) => <CodeBlockCard key={b.index} block={b} workspace={files} />)
           )}
         </div>
+        <CodebaseManager codebases={codebases} onUpdate={(cbs) => setCodebases(cbs)} />
       </>
     );
   }

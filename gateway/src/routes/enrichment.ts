@@ -76,6 +76,99 @@ function parseIdParam(raw: string | undefined): number | null {
   }
 }
 
+/**
+ * The harness returns rows with NocoDB-style `Id` (capital I) and `CreatedAt`/`UpdatedAt`.
+ * The frontend expects lowercase `id`. This normalizer maps the key fields so
+ * the frontend doesn't need to know about the backend casing.
+ */
+function normaliseSource(row: Record<string, unknown>) {
+  return {
+    id: row.Id ?? row.id,
+    org_id: row.org_id,
+    name: row.name,
+    url: row.url,
+    category: row.category,
+    frequency_hours: row.frequency_hours,
+    last_scraped_at: row.last_scraped_at ?? null,
+    status: row.status ?? null,
+    chunk_count: row.chunk_count ?? 0,
+    content_hash: row.content_hash ?? null,
+    active: row.active === true || row.active === 1 || row.active === '1' || row.active === 'true',
+    enrichment_agent_id: row.enrichment_agent_id ?? null,
+    use_playwright: row.use_playwright === true || row.use_playwright === 1,
+    playwright_fallback: row.playwright_fallback === true || row.playwright_fallback === 1,
+  };
+}
+
+function normaliseSuggestion(row: Record<string, unknown>) {
+  return {
+    id: row.Id ?? row.id,
+    org_id: row.org_id,
+    url: row.url,
+    name: row.name,
+    category: row.category,
+    reason: row.reason ?? null,
+    confidence: row.confidence,
+    confidence_score: row.confidence_score,
+    suggested_by_url: row.suggested_by_url ?? null,
+    suggested_by_cycle: row.suggested_by_cycle ?? null,
+    times_suggested: row.times_suggested ?? 1,
+    status: row.status,
+    reviewed_by_user_id: row.reviewed_by_user_id ?? null,
+    reviewed_at: row.reviewed_at ?? null,
+  };
+}
+
+function normaliseLogEntry(row: Record<string, unknown>) {
+  const flags = row.flags;
+  let parsedFlags: string[] = [];
+  if (Array.isArray(flags)) parsedFlags = flags.map(String);
+  else if (typeof flags === 'string') {
+    try { parsedFlags = JSON.parse(flags); } catch { parsedFlags = []; }
+  }
+  return {
+    id: row.Id ?? row.id,
+    org_id: row.org_id,
+    scrape_target_id: row.scrape_target_id ?? null,
+    cycle_id: row.cycle_id,
+    event_type: row.event_type,
+    source_url: row.source_url ?? null,
+    message: row.message ?? null,
+    chunks_stored: row.chunks_stored ?? null,
+    tokens_used: row.tokens_used ?? null,
+    duration_seconds: row.duration_seconds ?? null,
+    flags: parsedFlags,
+    created_at: row.CreatedAt ?? row.created_at ?? null,
+  };
+}
+
+/** Forward a harness response, transforming the JSON body with a mapper. */
+async function forwardNormalised<T>(
+  res: Response,
+  transform: (body: Record<string, unknown>) => T,
+): Promise<Response> {
+  const text = await res.text();
+  if (!res.ok) {
+    return new Response(text, {
+      status: res.status,
+      headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
+    });
+  }
+  try {
+    const json = JSON.parse(text);
+    const transformed = transform(json);
+    return new Response(JSON.stringify(transformed), {
+      status: res.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch {
+    return new Response(text, {
+      status: res.status,
+      headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
+    });
+  }
+}
+
 // --- Sources ----------------------------------------------------------------
 
 const createSourceSchema = z.object({
@@ -110,7 +203,10 @@ enrichmentRoute.get('/sources', async (c) => {
       agent_id: agentId ? Number(agentId) : undefined,
       active_only: activeOnly ? activeOnly === 'true' : undefined,
     });
-    return forward(res);
+    return forwardNormalised(res, (body) => {
+      const sources = Array.isArray(body.sources) ? body.sources : Array.isArray(body) ? body : [];
+      return { sources: sources.map((s: Record<string, unknown>) => normaliseSource(s)) };
+    });
   } catch (err) {
     return mapHarnessError(err);
   }
@@ -121,7 +217,7 @@ enrichmentRoute.get('/sources/:id', async (c) => {
   if (id == null) return c.json({ error: 'invalid_id' }, 400);
   try {
     const res = await getEnrichmentSource(id);
-    return forward(res);
+    return forwardNormalised(res, (body) => normaliseSource(body));
   } catch (err) {
     return mapHarnessError(err);
   }
@@ -136,7 +232,7 @@ enrichmentRoute.post('/sources', async (c) => {
   const { orgId } = getAuthContext(c);
   try {
     const res = await createEnrichmentSource({ ...parsed.data, org_id: Number(orgId) });
-    return forward(res);
+    return forwardNormalised(res, (body) => normaliseSource(body));
   } catch (err) {
     return mapHarnessError(err);
   }
@@ -152,7 +248,7 @@ enrichmentRoute.patch('/sources/:id', async (c) => {
   if (id == null) return c.json({ error: 'invalid_id' }, 400);
   try {
     const res = await patchEnrichmentSource(id, parsed.data);
-    return forward(res);
+    return forwardNormalised(res, (body) => normaliseSource(body));
   } catch (err) {
     return mapHarnessError(err);
   }
@@ -197,7 +293,10 @@ enrichmentRoute.get('/sources/:id/log', async (c) => {
   const limit = Number(url.searchParams.get('limit')) || 50;
   try {
     const res = await getEnrichmentSourceLog(id, limit);
-    return forward(res);
+    return forwardNormalised(res, (body) => {
+      const entries = Array.isArray(body.entries) ? body.entries : Array.isArray(body) ? body : [];
+      return { entries: entries.map((e: Record<string, unknown>) => normaliseLogEntry(e)) };
+    });
   } catch (err) {
     return mapHarnessError(err);
   }
@@ -211,7 +310,10 @@ enrichmentRoute.get('/log', async (c) => {
   const limit = Number(url.searchParams.get('limit')) || 100;
   try {
     const res = await listEnrichmentLog(Number(orgId), limit);
-    return forward(res);
+    return forwardNormalised(res, (body) => {
+      const entries = Array.isArray(body.entries) ? body.entries : Array.isArray(body) ? body : [];
+      return { entries: entries.map((e: Record<string, unknown>) => normaliseLogEntry(e)) };
+    });
   } catch (err) {
     return mapHarnessError(err);
   }
@@ -225,7 +327,10 @@ enrichmentRoute.get('/suggestions', async (c) => {
   const status = url.searchParams.get('status') ?? undefined;
   try {
     const res = await listEnrichmentSuggestions(Number(orgId), status);
-    return forward(res);
+    return forwardNormalised(res, (body) => {
+      const suggestions = Array.isArray(body.suggestions) ? body.suggestions : Array.isArray(body) ? body : [];
+      return { suggestions: suggestions.map((s: Record<string, unknown>) => normaliseSuggestion(s)) };
+    });
   } catch (err) {
     return mapHarnessError(err);
   }
@@ -236,7 +341,7 @@ enrichmentRoute.get('/suggestions/:id', async (c) => {
   if (id == null) return c.json({ error: 'invalid_id' }, 400);
   try {
     const res = await getEnrichmentSuggestion(id);
-    return forward(res);
+    return forwardNormalised(res, (body) => normaliseSuggestion(body));
   } catch (err) {
     return mapHarnessError(err);
   }

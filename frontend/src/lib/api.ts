@@ -592,10 +592,10 @@ async function* streamJob(
     return;
   }
 
-  // Push queue: EventSource callbacks push, the generator pulls
-  const queue: Array<StreamEvent | { __done: true } | { __reconnect: true }> = [];
+  type QueueItem = StreamEvent | { __done: true } | { __reconnect: true } | { __abort: true };
+  const queue: QueueItem[] = [];
   let waiting: ((v: void) => void) | null = null;
-  function push(item: (typeof queue)[number]) {
+  function push(item: QueueItem) {
     queue.push(item);
     if (waiting) { waiting(); waiting = null; }
   }
@@ -606,8 +606,12 @@ async function* streamJob(
     return queue.shift()!;
   }
 
+  // Wire abort signal to wake the pull loop
+  signal?.addEventListener('abort', () => push({ __abort: true }));
+
   let cursor = 0;
   let emptyRetries = 0;
+  let activeEs: EventSource | null = null;
   const MAX_EMPTY_RETRIES = 8;
 
   function connect() {
@@ -622,25 +626,34 @@ async function* streamJob(
         push({ __done: true });
         return;
       }
-      if (e.lastEventId) cursor = parseInt(e.lastEventId, 10) + 1;
+      if (e.lastEventId) {
+        const n = parseInt(e.lastEventId, 10);
+        if (Number.isFinite(n)) cursor = n + 1;
+      }
       try {
         push(JSON.parse(e.data) as StreamEvent);
       } catch {}
     };
 
     es.onerror = () => {
-      es.close();
-      push({ __reconnect: true });
+      // Only push reconnect if this is still the active EventSource
+      if (es === activeEs) {
+        es.close();
+        push({ __reconnect: true });
+      }
     };
 
+    activeEs = es;
     return es;
   }
 
   let es = connect();
 
-  // Reconnect on tab resume
   const onVisibility = () => {
     if (document.visibilityState === 'visible') {
+      // Detach old ES handlers before closing to prevent spurious __reconnect
+      es.onmessage = null;
+      es.onerror = null;
       es.close();
       es = connect();
     }
@@ -649,10 +662,9 @@ async function* streamJob(
 
   try {
     while (true) {
-      if (signal?.aborted) return;
-
       const item = await pull();
 
+      if ('__abort' in item) return;
       if ('__done' in item) return;
 
       if ('__reconnect' in item) {

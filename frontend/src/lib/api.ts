@@ -534,6 +534,7 @@ export const api = {
       category: EnrichmentCategory;
       frequency_hours: number;
       active?: boolean;
+      enrichment_agent_id?: number | null;
     }) => http.post('api/enrichment/sources', { json: body }).json<ScrapeTarget>(),
     updateSource: (id: number, body: Partial<ScrapeTarget>) =>
       http.patch(`api/enrichment/sources/${id}`, { json: body }).json<ScrapeTarget>(),

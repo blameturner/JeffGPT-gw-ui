@@ -186,22 +186,35 @@ function StatusBadge({ status }: { status: SchedulerStatus | null }) {
 
 function SourcesTab() {
   const [sources, setSources] = useState<ScrapeTarget[]>([]);
+  const [agents, setAgents] = useState<EnrichmentAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [selected, setSelected] = useState<ScrapeTarget | null>(null);
   const [form, setForm] = useState({
     name: '',
     url: '',
     category: 'documentation' as EnrichmentCategory,
     frequency_hours: 24,
+    enrichment_agent_id: null as number | null,
   });
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.enrichment.sources();
-      setSources(res.sources);
+      const [srcRes, agRes] = await Promise.all([
+        api.enrichment.sources(),
+        api.enrichment.agents(),
+      ]);
+      setSources(srcRes.sources);
+      setAgents(agRes.agents ?? []);
+      // Refresh selected if open
+      if (selected) {
+        const updated = srcRes.sources.find((s) => s.id === selected.id);
+        if (updated) setSelected(updated);
+        else setSelected(null);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -218,7 +231,7 @@ function SourcesTab() {
     try {
       await api.enrichment.createSource(form);
       setShowForm(false);
-      setForm({ name: '', url: '', category: 'documentation', frequency_hours: 24 });
+      setForm({ name: '', url: '', category: 'documentation', frequency_hours: 24, enrichment_agent_id: null });
       load();
     } catch (err) {
       setError((err as Error).message);
@@ -261,10 +274,41 @@ function SourcesTab() {
     if (!confirm('Deactivate this source?')) return;
     try {
       await api.enrichment.deleteSource(id);
+      if (selected?.id === id) setSelected(null);
       load();
     } catch (err) {
       setError((err as Error).message);
     }
+  }
+
+  async function assignAgent(sourceId: number, agentId: number | null) {
+    try {
+      await api.enrichment.updateSource(sourceId, { enrichment_agent_id: agentId });
+      load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  const agentName = (id: number | null) => {
+    if (id == null) return null;
+    return agents.find((a) => a.Id === id)?.name ?? null;
+  };
+
+  if (selected) {
+    return (
+      <SourceDetail
+        source={selected}
+        agents={agents}
+        agentName={agentName}
+        onBack={() => setSelected(null)}
+        onAssignAgent={(agentId) => assignAgent(selected.id, agentId)}
+        onToggleActive={() => toggleActive(selected)}
+        onTrigger={() => triggerNow(selected.id)}
+        onFlush={() => flushChunks(selected.id)}
+        onDelete={() => remove(selected.id)}
+      />
+    );
   }
 
   return (
@@ -310,7 +354,22 @@ function SourcesTab() {
             onChange={(v) => setForm({ ...form, frequency_hours: Number(v) || 24 })}
             required
           />
-          <div className="col-span-2 flex justify-end">
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.16em] text-muted mb-1.5 font-sans">
+              Agent
+            </span>
+            <Select
+              value={form.enrichment_agent_id == null ? '' : String(form.enrichment_agent_id)}
+              onChange={(v) => setForm({ ...form, enrichment_agent_id: v === '' ? null : Number(v) })}
+              placeholder="none"
+              options={[
+                { value: '', label: 'None' },
+                ...agents.map((a) => ({ value: String(a.Id), label: a.name })),
+              ]}
+              position="below"
+            />
+          </div>
+          <div className="flex items-end justify-end">
             <button
               type="submit"
               className="text-[11px] uppercase tracking-[0.18em] font-sans border border-fg px-4 py-2 hover:bg-fg hover:text-bg"
@@ -333,6 +392,7 @@ function SourcesTab() {
               <th className="text-left py-2">name</th>
               <th className="text-left py-2">url</th>
               <th className="text-left py-2">category</th>
+              <th className="text-left py-2">agent</th>
               <th className="text-left py-2">freq</th>
               <th className="text-left py-2">last scraped</th>
               <th className="text-left py-2">status</th>
@@ -343,13 +403,23 @@ function SourcesTab() {
           <tbody>
             {sources.map((s) => (
               <tr key={s.id} className="border-b border-border hover:bg-panelHi">
-                <td className="py-2">{s.name}</td>
-                <td className="py-2 font-sans text-xs truncate max-w-[260px]">
+                <td className="py-2">
+                  <button
+                    onClick={() => setSelected(s)}
+                    className="underline hover:text-fg text-left"
+                  >
+                    {s.name}
+                  </button>
+                </td>
+                <td className="py-2 font-sans text-xs truncate max-w-[220px]">
                   <a href={s.url} target="_blank" rel="noreferrer" className="underline">
                     {s.url}
                   </a>
                 </td>
                 <td className="py-2 font-sans text-xs">{s.category}</td>
+                <td className="py-2 font-sans text-xs text-muted">
+                  {agentName(s.enrichment_agent_id) ?? '—'}
+                </td>
                 <td className="py-2 font-sans text-xs">{s.frequency_hours}h</td>
                 <td className="py-2 text-xs text-muted">{relTime(s.last_scraped_at)}</td>
                 <td className="py-2 text-xs">
@@ -378,6 +448,149 @@ function SourcesTab() {
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+function SourceDetail({
+  source,
+  agents,
+  agentName,
+  onBack,
+  onAssignAgent,
+  onToggleActive,
+  onTrigger,
+  onFlush,
+  onDelete,
+}: {
+  source: ScrapeTarget;
+  agents: EnrichmentAgent[];
+  agentName: (id: number | null) => string | null;
+  onBack: () => void;
+  onAssignAgent: (agentId: number | null) => void;
+  onToggleActive: () => void;
+  onTrigger: () => void;
+  onFlush: () => void;
+  onDelete: () => void;
+}) {
+  const [history, setHistory] = useState<EnrichmentLogEntry[]>([]);
+  const [histLoading, setHistLoading] = useState(true);
+
+  useEffect(() => {
+    setHistLoading(true);
+    api.enrichment
+      .log({ scrape_target_id: source.id, limit: 50 })
+      .then((r) => setHistory(r.entries))
+      .catch(() => setHistory([]))
+      .finally(() => setHistLoading(false));
+  }, [source.id]);
+
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        className="text-xs uppercase tracking-[0.18em] text-muted font-sans mb-4 hover:text-fg"
+      >
+        ← back to sources
+      </button>
+
+      <div className="border border-border rounded-md p-5 bg-panel/20 mb-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h2 className="font-display text-xl mb-1">{source.name}</h2>
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-sans text-muted underline break-all"
+            >
+              {source.url}
+            </a>
+          </div>
+          <div className="flex gap-2 text-[10px] uppercase tracking-[0.14em] font-sans shrink-0">
+            <button onClick={onToggleActive} className="border border-border px-2 py-1 hover:bg-fg hover:text-bg hover:border-fg transition-colors">
+              {source.active ? 'disable' : 'enable'}
+            </button>
+            <button onClick={onTrigger} className="border border-border px-2 py-1 hover:bg-fg hover:text-bg hover:border-fg transition-colors">
+              scrape now
+            </button>
+            <button onClick={onFlush} className="border border-border px-2 py-1 hover:bg-fg hover:text-bg hover:border-fg transition-colors">
+              flush
+            </button>
+            <button onClick={onDelete} className="border border-border px-2 py-1 hover:border-red-700 hover:text-red-700 transition-colors">
+              delete
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Category</span>
+            <span>{source.category}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Frequency</span>
+            <span>{source.frequency_hours}h</span>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Last scraped</span>
+            <span>{relTime(source.last_scraped_at)}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Status</span>
+            <span>
+              {source.status ?? '—'}
+              {!source.active && <span className="text-muted"> (inactive)</span>}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Chunks</span>
+            <span>{source.chunk_count}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Content hash</span>
+            <span className="truncate block max-w-[200px]">{source.content_hash ?? '—'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Agent assignment */}
+      <div className="border border-border rounded-md p-4 bg-panel/20 mb-6">
+        <h3 className="font-display text-base mb-3">Assigned agent</h3>
+        <div className="flex items-center gap-4">
+          <Select
+            value={source.enrichment_agent_id == null ? '' : String(source.enrichment_agent_id)}
+            onChange={(v) => onAssignAgent(v === '' ? null : Number(v))}
+            placeholder="none"
+            options={[
+              { value: '', label: 'None (unassigned)' },
+              ...agents.map((a) => ({ value: String(a.Id), label: a.name })),
+            ]}
+            position="below"
+          />
+          {source.enrichment_agent_id != null && (
+            <span className="text-xs text-muted font-sans">
+              Currently: {agentName(source.enrichment_agent_id) ?? `ID ${source.enrichment_agent_id}`}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Scrape history */}
+      <div className="border border-border rounded-md p-4 bg-panel/20">
+        <h3 className="font-display text-base mb-3">Scrape history</h3>
+        {histLoading ? (
+          <p className="text-sm text-muted">Loading history…</p>
+        ) : history.length === 0 ? (
+          <p className="text-sm text-muted font-sans">No scrape events yet.</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {history.map((r) => (
+              <LogRow key={r.id} row={r} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -719,10 +932,12 @@ function LogRow({ row }: { row: EnrichmentLogEntry }) {
 
 function AgentsTab() {
   const [agents, setAgents] = useState<EnrichmentAgent[]>([]);
+  const [sources, setSources] = useState<ScrapeTarget[]>([]);
   const [statuses, setStatuses] = useState<Record<number, EnrichmentAgentStatus>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [selected, setSelected] = useState<EnrichmentAgent | null>(null);
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -737,17 +952,26 @@ function AgentsTab() {
   async function load() {
     setLoading(true);
     try {
-      const res = await api.enrichment.agents();
-      setAgents(res.agents ?? []);
+      const [agRes, srcRes] = await Promise.all([
+        api.enrichment.agents(),
+        api.enrichment.sources(),
+      ]);
+      setAgents(agRes.agents ?? []);
+      setSources(srcRes.sources);
       const statusMap: Record<number, EnrichmentAgentStatus> = {};
       await Promise.all(
-        (res.agents ?? []).map(async (a) => {
+        (agRes.agents ?? []).map(async (a) => {
           try {
             statusMap[a.Id] = await api.enrichment.agentStatus(a.Id);
           } catch {}
         }),
       );
       setStatuses(statusMap);
+      if (selected) {
+        const updated = (agRes.agents ?? []).find((a) => a.Id === selected.Id);
+        if (updated) setSelected(updated);
+        else setSelected(null);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -791,8 +1015,37 @@ function AgentsTab() {
     }
   }
 
+  async function assignSourceToAgent(sourceId: number, agentId: number | null) {
+    try {
+      await api.enrichment.updateSource(sourceId, { enrichment_agent_id: agentId });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   if (loading) return <p className="text-muted text-sm">Loading agents…</p>;
   if (error) return <p className="text-red-600 text-sm">{error}</p>;
+
+  if (selected) {
+    const agentSources = sources.filter((s) => s.enrichment_agent_id === selected.Id);
+    const unassigned = sources.filter((s) => s.enrichment_agent_id == null || s.enrichment_agent_id !== selected.Id);
+    const st = statuses[selected.Id];
+    return (
+      <AgentDetail
+        agent={selected}
+        status={st}
+        agentSources={agentSources}
+        unassignedSources={unassigned}
+        onBack={() => setSelected(null)}
+        onToggle={() => toggle(selected)}
+        onTrigger={() => trigger(selected.Id)}
+        onAssignSource={(srcId) => assignSourceToAgent(srcId, selected.Id)}
+        onRemoveSource={(srcId) => assignSourceToAgent(srcId, null)}
+        triggering={triggering === selected.Id}
+      />
+    );
+  }
 
   return (
     <div>
@@ -838,18 +1091,20 @@ function AgentsTab() {
         <div className="space-y-3">
           {agents.map((agent) => {
             const st = statuses[agent.Id];
+            const srcCount = sources.filter((s) => s.enrichment_agent_id === agent.Id).length;
             return (
               <div
                 key={agent.Id}
                 className={[
-                  'border rounded-md p-4 transition-colors',
-                  agent.active ? 'border-border bg-panel/20' : 'border-border/50 bg-panel/5 opacity-60',
+                  'border rounded-md p-4 transition-colors cursor-pointer',
+                  agent.active ? 'border-border bg-panel/20 hover:bg-panel/40' : 'border-border/50 bg-panel/5 opacity-60 hover:opacity-80',
                 ].join(' ')}
+                onClick={() => setSelected(agent)}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-display text-base tracking-tight font-medium">{agent.name}</h3>
+                      <h3 className="font-display text-base tracking-tight font-medium underline">{agent.name}</h3>
                       {agent.category && (
                         <span className="text-[9px] uppercase tracking-[0.14em] font-sans px-1.5 py-0.5 rounded bg-panel border border-border text-muted">
                           {agent.category}
@@ -866,12 +1121,13 @@ function AgentsTab() {
                       <span>cron: {agent.cron_expression}</span>
                       <span>{agent.timezone}</span>
                       <span>{agent.token_budget.toLocaleString()} tokens</span>
+                      <span>{srcCount} source{srcCount !== 1 ? 's' : ''}</span>
                       {st?.last_run && <span>last: {relTime(st.last_run.finished_at)}</span>}
                       {st?.next_run && <span>next: {relTime(st.next_run)}</span>}
-                      {st != null && <span>{st.sources_due} sources due</span>}
+                      {st != null && <span>{st.sources_due} due</span>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => void trigger(agent.Id)}
                       disabled={triggering === agent.Id}
@@ -892,6 +1148,203 @@ function AgentsTab() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function AgentDetail({
+  agent,
+  status,
+  agentSources,
+  unassignedSources,
+  onBack,
+  onToggle,
+  onTrigger,
+  onAssignSource,
+  onRemoveSource,
+  triggering,
+}: {
+  agent: EnrichmentAgent;
+  status?: EnrichmentAgentStatus;
+  agentSources: ScrapeTarget[];
+  unassignedSources: ScrapeTarget[];
+  onBack: () => void;
+  onToggle: () => void;
+  onTrigger: () => void;
+  onAssignSource: (sourceId: number) => void;
+  onRemoveSource: (sourceId: number) => void;
+  triggering: boolean;
+}) {
+  const [addingSource, setAddingSource] = useState(false);
+  const [sourceToAdd, setSourceToAdd] = useState('');
+
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        className="text-xs uppercase tracking-[0.18em] text-muted font-sans mb-4 hover:text-fg"
+      >
+        ← back to agents
+      </button>
+
+      <div className="border border-border rounded-md p-5 bg-panel/20 mb-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="font-display text-xl">{agent.name}</h2>
+              {agent.category && (
+                <span className="text-[9px] uppercase tracking-[0.14em] font-sans px-1.5 py-0.5 rounded bg-panel border border-border text-muted">
+                  {agent.category}
+                </span>
+              )}
+              <span className={`text-[9px] uppercase tracking-[0.14em] font-sans ${agent.active ? 'text-emerald-500' : 'text-muted'}`}>
+                {agent.active ? 'active' : 'paused'}
+              </span>
+            </div>
+            {agent.description && (
+              <p className="text-sm text-muted mb-2">{agent.description}</p>
+            )}
+          </div>
+          <div className="flex gap-2 text-[10px] uppercase tracking-[0.14em] font-sans shrink-0">
+            <button
+              onClick={onTrigger}
+              disabled={triggering}
+              className="border border-border px-2 py-1 hover:bg-fg hover:text-bg hover:border-fg transition-colors disabled:opacity-50"
+            >
+              {triggering ? '…' : 'Run now'}
+            </button>
+            <button
+              onClick={onToggle}
+              className="border border-border px-2 py-1 hover:bg-fg hover:text-bg hover:border-fg transition-colors"
+            >
+              {agent.active ? 'Pause' : 'Enable'}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Cron</span>
+            <span>{agent.cron_expression}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Timezone</span>
+            <span>{agent.timezone}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Token budget</span>
+            <span>{agent.token_budget.toLocaleString()}</span>
+          </div>
+          {status?.last_run && (
+            <div>
+              <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Last run</span>
+              <span>{relTime(status.last_run.finished_at)}</span>
+            </div>
+          )}
+          {status?.next_run && (
+            <div>
+              <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Next run</span>
+              <span>{relTime(status.next_run)}</span>
+            </div>
+          )}
+          {status != null && (
+            <div>
+              <span className="block text-[10px] uppercase tracking-[0.14em] text-muted mb-1">Sources due</span>
+              <span>{status.sources_due}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Assigned sources */}
+      <div className="border border-border rounded-md p-4 bg-panel/20">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display text-base">
+            Sources ({agentSources.length})
+          </h3>
+          <button
+            onClick={() => setAddingSource((v) => !v)}
+            className="text-[10px] uppercase tracking-[0.14em] font-sans border border-fg px-2 py-1 hover:bg-fg hover:text-bg transition-colors"
+          >
+            {addingSource ? 'Cancel' : '+ Add source'}
+          </button>
+        </div>
+
+        {addingSource && unassignedSources.length > 0 && (
+          <div className="flex items-center gap-3 mb-4 p-3 bg-panel border border-border rounded">
+            <Select
+              value={sourceToAdd}
+              onChange={setSourceToAdd}
+              placeholder="Select a source…"
+              options={unassignedSources.map((s) => ({ value: String(s.id), label: `${s.name} (${s.url})` }))}
+              position="below"
+            />
+            <button
+              onClick={() => {
+                if (sourceToAdd) {
+                  onAssignSource(Number(sourceToAdd));
+                  setSourceToAdd('');
+                  setAddingSource(false);
+                }
+              }}
+              disabled={!sourceToAdd}
+              className="text-[10px] uppercase tracking-[0.14em] font-sans border border-fg px-3 py-1 hover:bg-fg hover:text-bg transition-colors disabled:opacity-50 shrink-0"
+            >
+              Assign
+            </button>
+          </div>
+        )}
+        {addingSource && unassignedSources.length === 0 && (
+          <p className="text-xs text-muted font-sans mb-4">All sources are already assigned to an agent.</p>
+        )}
+
+        {agentSources.length === 0 ? (
+          <p className="text-sm text-muted font-sans">No sources assigned to this agent yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-[0.16em] text-muted font-sans border-b border-border">
+                <th className="text-left py-2">name</th>
+                <th className="text-left py-2">url</th>
+                <th className="text-left py-2">category</th>
+                <th className="text-left py-2">freq</th>
+                <th className="text-left py-2">last scraped</th>
+                <th className="text-left py-2">status</th>
+                <th className="text-right py-2">chunks</th>
+                <th className="text-right py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {agentSources.map((s) => (
+                <tr key={s.id} className="border-b border-border hover:bg-panelHi">
+                  <td className="py-2">{s.name}</td>
+                  <td className="py-2 font-sans text-xs truncate max-w-[220px]">
+                    <a href={s.url} target="_blank" rel="noreferrer" className="underline">
+                      {s.url}
+                    </a>
+                  </td>
+                  <td className="py-2 font-sans text-xs">{s.category}</td>
+                  <td className="py-2 font-sans text-xs">{s.frequency_hours}h</td>
+                  <td className="py-2 text-xs text-muted">{relTime(s.last_scraped_at)}</td>
+                  <td className="py-2 text-xs">
+                    {s.status ?? '—'}
+                    {!s.active && <span className="text-muted"> (inactive)</span>}
+                  </td>
+                  <td className="py-2 text-right font-sans text-xs">{s.chunk_count}</td>
+                  <td className="py-2 text-right">
+                    <button
+                      onClick={() => onRemoveSource(s.id)}
+                      className="text-[10px] uppercase tracking-[0.14em] font-sans text-muted hover:text-red-700"
+                    >
+                      remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }

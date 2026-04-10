@@ -21,4 +21,9 @@ export {
   runStream,
   triggerScheduler,
   updateConversation,
+  listEnrichmentAgents,
+  createEnrichmentAgent,
+  patchEnrichmentAgent,
+  triggerEnrichmentAgent,
+  getEnrichmentAgentStatus,
 } from './endpoints.js';

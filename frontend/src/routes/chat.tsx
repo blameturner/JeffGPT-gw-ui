@@ -31,6 +31,8 @@ function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [activeId, setActiveId] = useState<number | null>(null);
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
 
   const [models, setModels] = useState<LlmModel[]>([]);
   const [model, setModel] = useState<string>('');
@@ -130,6 +132,20 @@ function ChatPage() {
     });
   }, [messages]);
 
+  function hydrateMessages(msgs: ChatMessageRow[]): DisplayMessage[] {
+    return msgs
+      .filter((m) => m.role !== 'system')
+      .map<DisplayMessage>((m) => ({
+        id: String(m.Id),
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        status: 'complete',
+        tokensIn: m.tokens_input,
+        tokensOut: m.tokens_output,
+        responseStyle: m.response_style ?? null,
+      }));
+  }
+
   async function selectConversation(c: Conversation) {
     setActiveId(c.Id);
     setModel(c.model || model);
@@ -144,23 +160,52 @@ function ChatPage() {
     } catch {}
     try {
       const res = await api.conversationMessages(c.Id);
-      setMessages(
-        res.messages
-          .filter((m: ChatMessageRow) => m.role !== 'system')
-          .map<DisplayMessage>((m: ChatMessageRow) => ({
-            id: String(m.Id),
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            status: 'complete',
-            tokensIn: m.tokens_input,
-            tokensOut: m.tokens_output,
-            responseStyle: m.response_style ?? null,
-          })),
-      );
+      const loaded = hydrateMessages(res.messages);
+      const convStatus = res.conversation?.status;
+
+      if (convStatus === 'processing') {
+        setMessages([...loaded, {
+          id: `pending-${c.Id}`,
+          role: 'assistant',
+          content: '',
+          status: 'pending',
+          startedAt: Date.now(),
+        }]);
+        setLoadingMessages(false);
+        pollForCompletion(c.Id);
+      } else {
+        setMessages(loaded);
+        setLoadingMessages(false);
+      }
     } catch (err) {
       setError((err as Error)?.message ?? 'Failed to load conversation');
-    } finally {
       setLoadingMessages(false);
+    }
+  }
+
+  async function pollForCompletion(convId: number) {
+    while (activeIdRef.current === convId) {
+      await new Promise((r) => setTimeout(r, 2000));
+      if (activeIdRef.current !== convId) return;
+      try {
+        const res = await api.conversationMessages(convId);
+        const loaded = hydrateMessages(res.messages);
+        const status = res.conversation?.status;
+        if (status === 'processing') {
+          setMessages([...loaded, {
+            id: `pending-${convId}`,
+            role: 'assistant',
+            content: '',
+            status: 'pending',
+            startedAt: Date.now(),
+          }]);
+        } else {
+          setMessages(loaded);
+          return;
+        }
+      } catch {
+        return;
+      }
     }
   }
 

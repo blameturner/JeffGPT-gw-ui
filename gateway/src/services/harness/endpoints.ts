@@ -142,6 +142,26 @@ export function getGraphCoverage(orgId: number): Promise<Response> {
   );
 }
 
+export function listEnrichmentAgents(orgId: number): Promise<Response> {
+  return harnessClient.get(`/enrichment/agents?org_id=${orgId}`, HARNESS_ENRICHMENT_TIMEOUT_MS);
+}
+
+export function createEnrichmentAgent(body: unknown): Promise<Response> {
+  return harnessClient.post('/enrichment/agents', body, HARNESS_ENRICHMENT_TIMEOUT_MS);
+}
+
+export function patchEnrichmentAgent(id: number, body: unknown): Promise<Response> {
+  return harnessClient.patch(`/enrichment/agents/${id}`, body, HARNESS_ENRICHMENT_TIMEOUT_MS);
+}
+
+export function triggerEnrichmentAgent(id: number): Promise<Response> {
+  return harnessClient.post(`/enrichment/agents/${id}/trigger`, {}, HARNESS_SCHEDULER_TIMEOUT_MS);
+}
+
+export function getEnrichmentAgentStatus(id: number): Promise<Response> {
+  return harnessClient.get(`/enrichment/agents/${id}/status`, HARNESS_SCHEDULER_TIMEOUT_MS);
+}
+
 export function listWorkerTypes(): Promise<Response> {
   return harnessClient.get('/workers/types', HARNESS_ENRICHMENT_TIMEOUT_MS);
 }

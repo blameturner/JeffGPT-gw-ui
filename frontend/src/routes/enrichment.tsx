@@ -14,6 +14,8 @@ import {
   api,
   ENRICHMENT_CATEGORIES,
   ENRICHMENT_EVENT_TYPES,
+  type EnrichmentAgent,
+  type EnrichmentAgentStatus,
   type EnrichmentCategory,
   type EnrichmentEventType,
   type EnrichmentLogEntry,
@@ -25,13 +27,34 @@ import {
 import { authClient } from '../lib/auth-client';
 import { Select } from '../components/Select';
 
-type Tab = 'sources' | 'suggestions' | 'log' | 'graph';
+type Tab = 'sources' | 'suggestions' | 'log' | 'graph' | 'agents';
 
-function relTime(iso: string | null): string {
-  if (!iso) return '—';
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return iso;
+function relTime(value: string | number | null): string {
+  if (value == null) return '—';
+  let t: number;
+  if (typeof value === 'number') {
+    // Unix timestamp — could be seconds or milliseconds
+    t = value < 1e12 ? value * 1000 : value;
+  } else {
+    // Numeric string (unix timestamp) vs ISO string
+    const num = Number(value);
+    if (!Number.isNaN(num) && /^\d+$/.test(value.trim())) {
+      t = num < 1e12 ? num * 1000 : num;
+    } else {
+      t = new Date(value).getTime();
+    }
+  }
+  if (Number.isNaN(t)) return String(value);
   const diff = Date.now() - t;
+  if (diff < 0) {
+    // Future date — show "in X"
+    const s = Math.round(-diff / 1000);
+    if (s < 60) return `in ${s}s`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `in ${m}m`;
+    const h = Math.round(m / 60);
+    return `in ${h}h`;
+  }
   const s = Math.round(diff / 1000);
   if (s < 60) return `${s}s ago`;
   const m = Math.round(s / 60);
@@ -81,6 +104,7 @@ function EnrichmentPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'sources', label: 'Sources' },
+    { id: 'agents', label: 'Agents' },
     { id: 'suggestions', label: 'Suggestions' },
     { id: 'log', label: 'Log' },
     { id: 'graph', label: 'Graph coverage' },
@@ -130,6 +154,7 @@ function EnrichmentPage() {
 
       <main className="px-8 py-6">
         {tab === 'sources' && <SourcesTab />}
+        {tab === 'agents' && <AgentsTab />}
         {tab === 'suggestions' && <SuggestionsTab />}
         {tab === 'log' && <LogTab />}
         {tab === 'graph' && <GraphCoverageTab />}
@@ -154,6 +179,7 @@ function StatusBadge({ status }: { status: SchedulerStatus | null }) {
       {' · '}
       {status.sources_due} due
       {status.next_run && ` · next ${relTime(status.next_run)}`}
+      {status.last_run && ` · last ${relTime(status.last_run.finished_at)}`}
     </span>
   );
 }
@@ -687,6 +713,185 @@ function LogRow({ row }: { row: EnrichmentLogEntry }) {
       <span className="font-sans text-muted w-16 text-right shrink-0">
         {row.duration_seconds != null ? `${row.duration_seconds.toFixed(1)}s` : ''}
       </span>
+    </div>
+  );
+}
+
+function AgentsTab() {
+  const [agents, setAgents] = useState<EnrichmentAgent[]>([]);
+  const [statuses, setStatuses] = useState<Record<number, EnrichmentAgentStatus>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    category: '',
+    token_budget: 50000,
+    cron_expression: '0 */6 * * *',
+    timezone: 'Australia/Sydney',
+  });
+  const [saving, setSaving] = useState(false);
+  const [triggering, setTriggering] = useState<number | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await api.enrichment.agents();
+      setAgents(res.agents ?? []);
+      const statusMap: Record<number, EnrichmentAgentStatus> = {};
+      await Promise.all(
+        (res.agents ?? []).map(async (a) => {
+          try {
+            statusMap[a.Id] = await api.enrichment.agentStatus(a.Id);
+          } catch {}
+        }),
+      );
+      setStatuses(statusMap);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  async function create() {
+    setSaving(true);
+    try {
+      await api.enrichment.createAgent(form);
+      setShowForm(false);
+      setForm({ name: '', description: '', category: '', token_budget: 50000, cron_expression: '0 */6 * * *', timezone: 'Australia/Sydney' });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggle(agent: EnrichmentAgent) {
+    try {
+      await api.enrichment.updateAgent(agent.Id, { active: !agent.active });
+      setAgents((as) => as.map((a) => (a.Id === agent.Id ? { ...a, active: !a.active } : a)));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function trigger(id: number) {
+    setTriggering(id);
+    try {
+      await api.enrichment.triggerAgent(id);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setTriggering(null);
+    }
+  }
+
+  if (loading) return <p className="text-muted text-sm">Loading agents…</p>;
+  if (error) return <p className="text-red-600 text-sm">{error}</p>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-muted text-xs font-sans">
+          {agents.length} enrichment agent{agents.length !== 1 ? 's' : ''} configured
+        </p>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="text-[11px] uppercase tracking-[0.18em] font-sans border border-fg px-3 py-1.5 hover:bg-fg hover:text-bg transition-colors"
+        >
+          {showForm ? 'Cancel' : '+ New agent'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="border border-border rounded-md p-4 mb-6 space-y-3 bg-panel/30">
+          <div className="grid grid-cols-2 gap-3">
+            <LabeledInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
+            <LabeledInput label="Category" value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
+          </div>
+          <LabeledInput label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} />
+          <div className="grid grid-cols-3 gap-3">
+            <LabeledInput label="Cron" value={form.cron_expression} onChange={(v) => setForm({ ...form, cron_expression: v })} required />
+            <LabeledInput label="Timezone" value={form.timezone} onChange={(v) => setForm({ ...form, timezone: v })} />
+            <LabeledInput label="Token budget" value={String(form.token_budget)} onChange={(v) => setForm({ ...form, token_budget: parseInt(v, 10) || 50000 })} />
+          </div>
+          <button
+            onClick={() => void create()}
+            disabled={saving || !form.name || !form.cron_expression}
+            className="text-[11px] uppercase tracking-[0.18em] font-sans border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Creating…' : 'Create agent'}
+          </button>
+        </div>
+      )}
+
+      {agents.length === 0 && !showForm ? (
+        <p className="text-muted text-sm py-8 text-center">
+          No enrichment agents yet. Create one to run topic-specific enrichment cycles on their own schedule.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {agents.map((agent) => {
+            const st = statuses[agent.Id];
+            return (
+              <div
+                key={agent.Id}
+                className={[
+                  'border rounded-md p-4 transition-colors',
+                  agent.active ? 'border-border bg-panel/20' : 'border-border/50 bg-panel/5 opacity-60',
+                ].join(' ')}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-display text-base tracking-tight font-medium">{agent.name}</h3>
+                      {agent.category && (
+                        <span className="text-[9px] uppercase tracking-[0.14em] font-sans px-1.5 py-0.5 rounded bg-panel border border-border text-muted">
+                          {agent.category}
+                        </span>
+                      )}
+                      <span className={`text-[9px] uppercase tracking-[0.14em] font-sans ${agent.active ? 'text-emerald-500' : 'text-muted'}`}>
+                        {agent.active ? 'active' : 'paused'}
+                      </span>
+                    </div>
+                    {agent.description && (
+                      <p className="text-xs text-muted mb-2">{agent.description}</p>
+                    )}
+                    <div className="flex items-center gap-4 text-[10px] uppercase tracking-[0.12em] font-sans text-muted">
+                      <span>cron: {agent.cron_expression}</span>
+                      <span>{agent.timezone}</span>
+                      <span>{agent.token_budget.toLocaleString()} tokens</span>
+                      {st?.last_run && <span>last: {relTime(st.last_run.finished_at)}</span>}
+                      {st?.next_run && <span>next: {relTime(st.next_run)}</span>}
+                      {st != null && <span>{st.sources_due} sources due</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => void trigger(agent.Id)}
+                      disabled={triggering === agent.Id}
+                      className="text-[10px] uppercase tracking-[0.14em] font-sans border border-border px-2 py-1 hover:bg-fg hover:text-bg hover:border-fg transition-colors disabled:opacity-50"
+                    >
+                      {triggering === agent.Id ? '…' : 'Run now'}
+                    </button>
+                    <button
+                      onClick={() => void toggle(agent)}
+                      className="text-[10px] uppercase tracking-[0.14em] font-sans border border-border px-2 py-1 hover:bg-fg hover:text-bg hover:border-fg transition-colors"
+                    >
+                      {agent.active ? 'Pause' : 'Enable'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

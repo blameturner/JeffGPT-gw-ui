@@ -319,6 +319,8 @@ function CodePage() {
   const [sessions, setSessions] = useState<CodeConversation[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
 
   const [checklist, setChecklist] = useState<string[]>([]);
   const [checked, setChecked] = useState<Record<number, boolean>>({});
@@ -412,6 +414,17 @@ function CodePage() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  function hydrateCodeMessages(rows: CodeMessageRow[]): CodeMessage[] {
+    return rows.map((r) => ({
+      id: String(r.Id),
+      role: r.role === 'assistant' ? 'assistant' as const : 'user' as const,
+      mode: (r.mode ?? 'plan') as Mode,
+      content: r.role === 'user' ? cleanUserContent(r.content) : r.content,
+      status: 'complete' as const,
+      responseStyle: r.response_style ?? null,
+    }));
+  }
+
   async function selectSession(c: CodeConversation) {
     setConversationId(c.Id);
     setMessages([]);
@@ -428,19 +441,26 @@ function CodePage() {
       else if (codeStyles) setStyleKey(codeStyles.default);
     } catch {}
     try {
-      const [{ messages: rows }, ws] = await Promise.all([
+      const [msgRes, ws] = await Promise.all([
         api.code.messages(c.Id),
         api.code.workspace(c.Id),
       ]);
-      const loaded: CodeMessage[] = rows.map((r: CodeMessageRow) => ({
-        id: String(r.Id),
-        role: r.role === 'assistant' ? 'assistant' : 'user',
-        mode: (r.mode ?? 'plan') as Mode,
-        content: r.role === 'user' ? cleanUserContent(r.content) : r.content,
-        status: 'complete',
-        responseStyle: r.response_style ?? null,
-      }));
-      setMessages(loaded);
+      const loaded = hydrateCodeMessages(msgRes.messages);
+      const convStatus = msgRes.conversation?.status;
+
+      if (convStatus === 'processing') {
+        setMessages([...loaded, {
+          id: `pending-${c.Id}`,
+          role: 'assistant',
+          mode: c.mode ?? 'plan',
+          content: '',
+          status: 'streaming',
+        }]);
+        pollCodeCompletion(c.Id);
+      } else {
+        setMessages(loaded);
+      }
+
       const hydrated: AttachedFile[] = (ws.files ?? []).map((f) => ({
         name: f.name,
         content: f.content,
@@ -450,6 +470,31 @@ function CodePage() {
       setFiles(hydrated);
     } catch (err) {
       setError((err as Error)?.message ?? 'Failed to load session');
+    }
+  }
+
+  async function pollCodeCompletion(convId: number) {
+    while (conversationIdRef.current === convId) {
+      await new Promise((r) => setTimeout(r, 2000));
+      if (conversationIdRef.current !== convId) return;
+      try {
+        const res = await api.code.messages(convId);
+        const loaded = hydrateCodeMessages(res.messages);
+        if (res.conversation?.status === 'processing') {
+          setMessages([...loaded, {
+            id: `pending-${convId}`,
+            role: 'assistant',
+            mode: res.conversation.mode ?? 'plan',
+            content: '',
+            status: 'streaming',
+          }]);
+        } else {
+          setMessages(loaded);
+          return;
+        }
+      } catch {
+        return;
+      }
     }
   }
 

@@ -45,11 +45,14 @@ export interface LlmModel {
   model_id?: string;
 }
 
+export type ConversationStatus = 'processing' | 'complete' | 'error' | null;
+
 export interface Conversation {
   Id: number;
   org_id: number;
   model: string;
   title: string;
+  status?: ConversationStatus;
   CreatedAt?: string;
   UpdatedAt?: string;
 }
@@ -154,6 +157,7 @@ export interface CodeConversation {
   org_id: number;
   model: string;
   title: string;
+  status?: ConversationStatus;
   // mode is stored in the rag_collection column on the backend
   mode?: 'plan' | 'execute' | 'debug';
   rag_collection?: string | null;
@@ -292,6 +296,7 @@ export interface ScrapeTarget {
   chunk_count: number;
   content_hash: string | null;
   active: boolean;
+  enrichment_agent_id: number | null;
 }
 
 export interface EnrichmentLogEntry {
@@ -326,10 +331,48 @@ export interface SuggestedScrapeTarget {
   reviewed_at: string | null;
 }
 
+export interface SchedulerLastRun {
+  finished_at: string;
+  cycle_id: string;
+  tokens_used: number;
+  duration_seconds: number;
+}
+
 export interface SchedulerStatus {
   running: boolean;
   next_run: string | null;
   sources_due: number;
+  last_run: SchedulerLastRun | null;
+}
+
+export interface EnrichmentAgent {
+  Id: number;
+  org_id: number;
+  name: string;
+  description: string;
+  category: string;
+  token_budget: number;
+  cron_expression: string;
+  timezone: string;
+  active: boolean;
+  CreatedAt?: string;
+  UpdatedAt?: string;
+}
+
+export interface EnrichmentAgentStatus {
+  next_run: string | null;
+  last_run: SchedulerLastRun | null;
+  sources_due: number;
+}
+
+export interface EnrichmentAgentCreateBody {
+  name: string;
+  description?: string;
+  category?: string;
+  token_budget?: number;
+  cron_expression: string;
+  timezone?: string;
+  active?: boolean;
 }
 
 export interface GraphCoverageNode {
@@ -519,6 +562,16 @@ export const api = {
       http
         .get('api/enrichment/graph/coverage')
         .json<GraphCoverageNode[] | { nodes: GraphCoverageNode[] }>(),
+    agents: () =>
+      http.get('api/enrichment/agents').json<{ agents: EnrichmentAgent[] }>(),
+    createAgent: (body: EnrichmentAgentCreateBody) =>
+      http.post('api/enrichment/agents', { json: body }).json<EnrichmentAgent>(),
+    updateAgent: (id: number, body: Partial<EnrichmentAgentCreateBody & { active: boolean }>) =>
+      http.patch(`api/enrichment/agents/${id}`, { json: body }).json<EnrichmentAgent>(),
+    triggerAgent: (id: number) =>
+      http.post(`api/enrichment/agents/${id}/trigger`).json<{ status: string }>(),
+    agentStatus: (id: number) =>
+      http.get(`api/enrichment/agents/${id}/status`).json<EnrichmentAgentStatus>(),
   },
 
   agents: {

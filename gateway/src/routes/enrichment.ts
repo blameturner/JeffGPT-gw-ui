@@ -14,6 +14,11 @@ import {
   getGraphCoverage,
   getSchedulerStatus,
   triggerScheduler,
+  listEnrichmentAgents,
+  createEnrichmentAgent,
+  patchEnrichmentAgent,
+  triggerEnrichmentAgent,
+  getEnrichmentAgentStatus,
 } from '../services/harness/index.js';
 import type { AuthVariables } from '../types/auth.js';
 
@@ -487,6 +492,74 @@ enrichmentRoute.get('/graph/coverage', async (c) => {
     if (res.status === 404) {
       return c.json({ nodes: [] });
     }
+    return forward(res);
+  } catch (err) {
+    return mapHarnessError(err);
+  }
+});
+
+const createAgentSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().default(''),
+  category: z.string().default(''),
+  token_budget: z.number().int().positive().default(50000),
+  cron_expression: z.string().min(1),
+  timezone: z.string().default('Australia/Sydney'),
+  active: z.boolean().default(true),
+});
+
+enrichmentRoute.get('/agents', async (c) => {
+  const { orgId } = getAuthContext(c);
+  try {
+    const res = await listEnrichmentAgents(Number(orgId));
+    return forward(res);
+  } catch (err) {
+    return mapHarnessError(err);
+  }
+});
+
+enrichmentRoute.post('/agents', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = createAgentSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_body', issues: parsed.error.issues }, 400);
+  const { orgId } = getAuthContext(c);
+  try {
+    const res = await createEnrichmentAgent({ ...parsed.data, org_id: Number(orgId) });
+    return forward(res);
+  } catch (err) {
+    return mapHarnessError(err);
+  }
+});
+
+enrichmentRoute.patch('/agents/:id', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: 'invalid_body' }, 400);
+  let id: number;
+  try { id = assertInteger(c.req.param('id'), 'agent_id'); } catch { return c.json({ error: 'invalid_id' }, 400); }
+  try {
+    const res = await patchEnrichmentAgent(id, body);
+    return forward(res);
+  } catch (err) {
+    return mapHarnessError(err);
+  }
+});
+
+enrichmentRoute.post('/agents/:id/trigger', async (c) => {
+  let id: number;
+  try { id = assertInteger(c.req.param('id'), 'agent_id'); } catch { return c.json({ error: 'invalid_id' }, 400); }
+  try {
+    const res = await triggerEnrichmentAgent(id);
+    return forward(res);
+  } catch (err) {
+    return mapHarnessError(err);
+  }
+});
+
+enrichmentRoute.get('/agents/:id/status', async (c) => {
+  let id: number;
+  try { id = assertInteger(c.req.param('id'), 'agent_id'); } catch { return c.json({ error: 'invalid_id' }, 400); }
+  try {
+    const res = await getEnrichmentAgentStatus(id);
     return forward(res);
   } catch (err) {
     return mapHarnessError(err);

@@ -176,7 +176,7 @@ export function ChatPage() {
         responseStyle: m.response_style ?? null,
         sources: m.search_sources?.length ? m.search_sources : undefined,
         searchConfidence: m.search_confidence ?? undefined,
-        intent: m.intent ?? undefined,
+        intent: m.classification?.intent ?? m.intent ?? undefined,
         searchStatus: m.search_status,
       }));
   }
@@ -254,11 +254,7 @@ export function ChatPage() {
       for await (const ev of stream) {
         if (ev.type === 'intent_classified') {
           setMessages((ms) =>
-            ms.map((x) =>
-              x.id === pendingId
-                ? { ...x, intent: ev.classification.intent }
-                : x,
-            ),
+            ms.map((x) => (x.id === pendingId ? { ...x, intent: ev.intent } : x)),
           );
           continue;
         }

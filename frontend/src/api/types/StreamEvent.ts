@@ -2,7 +2,8 @@ import type { AgentOutput } from './AgentOutput';
 import type { SearchStatus } from './SearchStatus';
 import type { SearchConfidence } from './SearchConfidence';
 import type { SearchSource } from './SearchSource';
-import type { IntentClassification } from './IntentClassification';
+import type { ChatRoute } from './ChatRoute';
+import type { ChatIntent } from './ChatIntent';
 
 export type StreamEvent =
   | { type: 'chunk'; text: string }
@@ -40,6 +41,13 @@ export type StreamEvent =
       reason: string;
     }
   | { type: 'plan_checklist'; steps: string[] }
-  | { type: 'intent_classified'; classification: IntentClassification }
+  | {
+      type: 'intent_classified';
+      route: ChatRoute;
+      intent: ChatIntent;
+      secondary_intent?: ChatIntent | null;
+      entities: string[];
+      confidence: number;
+    }
   | { type: 'search_deferred'; entities: string[] }
   | { type: 'error'; message: string };

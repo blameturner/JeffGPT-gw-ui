@@ -1,5 +1,6 @@
 import type { ChatRole } from './ChatRole';
 import type { ChatIntent } from './ChatIntent';
+import type { IntentClassification } from './IntentClassification';
 import type { SearchStatus } from './SearchStatus';
 import type { SearchConfidence } from './SearchConfidence';
 import type { SearchSource } from './SearchSource';
@@ -19,6 +20,7 @@ export interface ChatMessageRow {
   search_source_count?: number;
   search_context_text?: string;
   search_sources?: SearchSource[];
+  classification?: IntentClassification | null;
   intent?: ChatIntent | null;
   intent_entities?: string[] | null;
   search_queries?: string[] | null;

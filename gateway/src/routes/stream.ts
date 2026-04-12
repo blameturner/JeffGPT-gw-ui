@@ -17,7 +17,7 @@ streamRoute.get('/:jobId', async (c) => {
     const res = await fetch(url, { method: 'GET' });
 
     if (!res.ok || !res.body) {
-      const text = await res.text().catch(() => '');
+    const text = await res.text().catch(() => '');
       return c.json(
         { error: 'harness_error', status: res.status, detail: text.slice(0, 500) },
         502,

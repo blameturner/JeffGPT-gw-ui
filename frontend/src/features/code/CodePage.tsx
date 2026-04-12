@@ -33,6 +33,7 @@ import { useOnVisibilityResume } from '../../hooks/useOnVisibilityResume';
 import { useWasRecentlyHidden } from '../../hooks/useWasRecentlyHidden';
 import { uid } from '../../lib/utils/uid';
 import { labelForTool } from '../../lib/intent/labelForTool';
+import { catThinkingLabel } from '../../lib/intent/catThinkingLabel';
 import { formatBytes } from '../../lib/utils/formatBytes';
 import { useAutoScrollToBottom } from '../chat/hooks/useAutoScrollToBottom';
 import type { Mode } from './types/Mode';
@@ -459,13 +460,16 @@ export function CodePage() {
           );
         } else if (ev.type === 'tool_status') {
           const label =
-            ev.phase === 'planning'
+            ev.phase === 'thinking'
+              ? catThinkingLabel()
+              : ev.phase === 'planning'
               ? ev.summary || 'Planning tools…'
               : ev.phase === 'start'
               ? `${labelForTool(ev.tool)}…`
               : undefined;
+          const isThinking = ev.phase === 'thinking';
           setMessages((ms) =>
-            ms.map((x) => (x.id === pendingId ? { ...x, toolStatus: label } : x)),
+            ms.map((x) => (x.id === pendingId ? { ...x, toolStatus: label, isThinking } : x)),
           );
         } else if (ev.type === 'meta') {
           if (ev.conversation_id && !gotConversationId) {
@@ -855,7 +859,7 @@ export function CodePage() {
                       ) : (
                         <>
                           {m.status === 'streaming' && m.toolStatus && (
-                            <div className="text-[11px] italic text-muted mb-2 font-sans">
+                            <div className={`text-[11px] italic text-muted mb-2 font-sans${m.isThinking ? ' animate-pulse' : ''}`}>
                               {m.toolStatus}
                               {m.reconnecting && (
                                 <span className="ml-2 not-italic uppercase tracking-[0.14em] text-muted/80">

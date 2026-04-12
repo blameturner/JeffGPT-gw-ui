@@ -30,7 +30,7 @@ export type StreamEvent =
   | { type: 'searching'; queries?: string[] }
   | {
       type: 'tool_status';
-      phase: 'planning' | 'start' | 'end';
+      phase: 'thinking' | 'planning' | 'start' | 'end';
       tool?: string;
       index?: number;
       reason?: string;

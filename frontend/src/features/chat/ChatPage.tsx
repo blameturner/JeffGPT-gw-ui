@@ -28,6 +28,7 @@ import { uid } from '../../lib/utils/uid';
 import { SidebarBody } from './SidebarBody';
 import { useAutoScrollToBottom } from './hooks/useAutoScrollToBottom';
 import { labelForTool } from '../../lib/intent/labelForTool';
+import { catThinkingLabel } from '../../lib/intent/catThinkingLabel';
 import type { ConsentRequest } from './types/ConsentRequest';
 
 const EMPTY_STATE_PROMPTS = [
@@ -284,13 +285,16 @@ export function ChatPage() {
         }
         if (ev.type === 'tool_status') {
           const label =
-            ev.phase === 'planning'
+            ev.phase === 'thinking'
+              ? catThinkingLabel()
+              : ev.phase === 'planning'
               ? ev.summary || 'Planning tools…'
               : ev.phase === 'start'
               ? `${labelForTool(ev.tool)}…`
               : undefined;
+          const isThinking = ev.phase === 'thinking';
           setMessages((ms) =>
-            ms.map((x) => (x.id === pendingId ? { ...x, toolStatus: label } : x)),
+            ms.map((x) => (x.id === pendingId ? { ...x, toolStatus: label, isThinking } : x)),
           );
           continue;
         }

@@ -22,5 +22,6 @@ export interface DisplayMessage {
   sourceUserText?: string;
   parsedOutput?: unknown;
   toolStatus?: string;
+  isThinking?: boolean;
   reconnecting?: boolean;
 }

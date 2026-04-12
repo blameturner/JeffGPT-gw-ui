@@ -33,6 +33,7 @@ import { isTransientNetworkError } from '../../lib/network/isTransientNetworkErr
 import { useOnVisibilityResume } from '../../hooks/useOnVisibilityResume';
 import { useWasRecentlyHidden } from '../../hooks/useWasRecentlyHidden';
 import { uid } from '../../lib/utils/uid';
+import { replayStream } from '../../api/replayStream';
 import { labelForTool } from '../../lib/intent/labelForTool';
 import { formatBytes } from '../../lib/utils/formatBytes';
 import { useAutoScrollToBottom } from '../chat/hooks/useAutoScrollToBottom';
@@ -90,11 +91,35 @@ export function CodePage() {
   // default new-session view.
   const ACTIVE_CODE_SESSION_KEY = 'codeActiveSession';
   const autoResumeTriedRef = useRef(false);
-  function rememberActiveSession(id: number | null) {
+  function rememberActiveSession(id: number | null, jobId?: string) {
     try {
-      if (id == null) window.localStorage.removeItem(ACTIVE_CODE_SESSION_KEY);
-      else window.localStorage.setItem(ACTIVE_CODE_SESSION_KEY, String(id));
+      if (id == null) {
+        window.localStorage.removeItem(ACTIVE_CODE_SESSION_KEY);
+      } else {
+        const payload: { id: number; jobId?: string } = { id };
+        if (jobId) payload.jobId = jobId;
+        // Merge with existing jobId if we're just updating the conversationId
+        if (!jobId) {
+          try {
+            const prev = JSON.parse(window.localStorage.getItem(ACTIVE_CODE_SESSION_KEY) ?? '{}');
+            if (prev.jobId) payload.jobId = prev.jobId;
+          } catch {}
+        }
+        window.localStorage.setItem(ACTIVE_CODE_SESSION_KEY, JSON.stringify(payload));
+      }
     } catch {}
+  }
+  function loadActiveCodeSession(): { id: number; jobId?: string } | null {
+    try {
+      const raw = window.localStorage.getItem(ACTIVE_CODE_SESSION_KEY);
+      if (!raw) return null;
+      // Support legacy format (plain number string)
+      const n = parseInt(raw, 10);
+      if (String(n) === raw && Number.isFinite(n)) return { id: n };
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.id === 'number') return parsed;
+    } catch {}
+    return null;
   }
 
   const [checklist, setChecklist] = useState<string[]>([]);
@@ -217,33 +242,198 @@ export function CodePage() {
 
   // Auto-resume in-flight session after tab navigation or reload.
   // Runs once after the sessions list first populates: if localStorage
-  // remembers a session id and that session is still processing, call
-  // selectSession so scheduleCodeRetry takes over polling until completion.
+  // remembers a session id (and optionally a jobId), try SSE replay first
+  // for real-time streaming, falling back to DB polling if replay fails.
   useEffect(() => {
     if (autoResumeTriedRef.current) return;
     if (sessionsLoading) return;
     if (sessions.length === 0) return;
     autoResumeTriedRef.current = true;
-    let saved: string | null = null;
-    try {
-      saved = window.localStorage.getItem(ACTIVE_CODE_SESSION_KEY);
-    } catch {
-      return;
-    }
-    if (!saved) return;
-    const id = parseInt(saved, 10);
-    if (!Number.isFinite(id)) {
-      rememberActiveSession(null);
-      return;
-    }
-    const c = sessions.find((s) => s.Id === id);
+
+    const stored = loadActiveCodeSession();
+    if (!stored) return;
+
+    const c = sessions.find((s) => s.Id === stored.id);
     if (!c) {
       rememberActiveSession(null);
       return;
     }
-    void selectSession(c);
+
+    if (stored.jobId) {
+      // We have a jobId — attempt SSE replay for real-time reconnection
+      void resumeCodeStream(c, stored.jobId);
+    } else {
+      // Legacy path: no jobId stored, fall back to selectSession (DB polling)
+      void selectSession(c);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, sessionsLoading]);
+
+  async function resumeCodeStream(c: CodeConversation, jobId: string) {
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+    setConversationId(c.Id);
+    if (c.mode) setMode(c.mode);
+    if (c.model) setModel(c.model);
+    setError(null);
+
+    // Load current state from DB
+    let msgRes: Awaited<ReturnType<typeof getCodeMessages>>;
+    let ws: Awaited<ReturnType<typeof getCodeWorkspace>>;
+    try {
+      [msgRes, ws] = await Promise.all([
+        getCodeMessages(c.Id),
+        getCodeWorkspace(c.Id),
+      ]);
+    } catch {
+      rememberActiveSession(null);
+      return;
+    }
+
+    const loaded = hydrateCodeMessages(msgRes.messages);
+    const convStatus = msgRes.conversation?.status;
+
+    // Hydrate workspace files
+    const hydrated: AttachedFile[] = (ws.files ?? []).map((f) => ({
+      name: f.name,
+      content: f.content,
+      content_b64: utf8ToB64(f.content),
+      size: f.content.length,
+    }));
+    setFiles(hydrated);
+
+    // If already complete or errored, just render from DB
+    if (convStatus !== 'processing') {
+      rememberActiveSession(null);
+      if (convStatus === 'error') {
+        setMessages(loaded);
+        setError('The model encountered an error processing this session.');
+      } else {
+        setMessages(loaded);
+      }
+      return;
+    }
+
+    // Show reconnecting state
+    const pendingId = `resume-${c.Id}`;
+    setMessages([...loaded, {
+      id: pendingId,
+      role: 'assistant',
+      mode: c.mode ?? 'plan',
+      content: '',
+      status: 'streaming',
+      reconnecting: true,
+    }]);
+
+    // Attempt SSE replay
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    setSending(true);
+
+    let replayWorked = false;
+    try {
+      const stream = replayStream(jobId, controller.signal);
+      const first = await stream.next();
+
+      if (!first.done) {
+        replayWorked = true;
+        // Remove reconnecting badge
+        setMessages((ms) =>
+          ms.map((x) => x.id === pendingId ? { ...x, reconnecting: false } : x),
+        );
+
+        // Process first event + rest of stream inline
+        async function* prependFirst(
+          firstVal: import('../../api/types/StreamEvent').StreamEvent,
+          rest: AsyncGenerator<import('../../api/types/StreamEvent').StreamEvent, void, void>,
+        ): AsyncGenerator<import('../../api/types/StreamEvent').StreamEvent, void, void> {
+          yield firstVal;
+          yield* rest;
+        }
+
+        for await (const ev of prependFirst(first.value, stream)) {
+          if (ev.type === 'chunk') {
+            setMessages((ms) =>
+              ms.map((x) =>
+                x.id === pendingId
+                  ? {
+                      ...x,
+                      content: x.content + ev.text,
+                      ...(x.isThinking ? { isThinking: false, thinkingEndTime: Date.now() } : {}),
+                    }
+                  : x,
+              ),
+            );
+          } else if (ev.type === 'thinking') {
+            setMessages((ms) =>
+              ms.map((x) =>
+                x.id === pendingId
+                  ? {
+                      ...x,
+                      thinkingContent: (x.thinkingContent ?? '') + ev.text,
+                      thinkingStartTime: x.thinkingStartTime ?? Date.now(),
+                      isThinking: true,
+                    }
+                  : x,
+              ),
+            );
+          } else if (ev.type === 'tool_status') {
+            const label =
+              ev.phase === 'planning'
+                ? ev.summary || 'Planning tools…'
+                : ev.phase === 'start'
+                ? `${labelForTool(ev.tool)}…`
+                : undefined;
+            flushSync(() => {
+              setMessages((ms) =>
+                ms.map((x) => (x.id === pendingId ? { ...x, toolStatus: label } : x)),
+              );
+            });
+          } else if (ev.type === 'plan_checklist') {
+            setChecklist(ev.steps ?? []);
+            setChecked({});
+          } else if (ev.type === 'done') {
+            rememberActiveSession(null);
+            setMessages((ms) =>
+              ms.map((x) => (x.id === pendingId ? { ...x, status: 'complete', isThinking: false } : x)),
+            );
+          } else if (ev.type === 'error') {
+            rememberActiveSession(null);
+            setMessages((ms) =>
+              ms.map((x) =>
+                x.id === pendingId ? { ...x, status: 'error', errorMessage: ev.message } : x,
+              ),
+            );
+            setError(ev.message);
+            break;
+          }
+        }
+      }
+    } catch {
+      // Replay failed, fall through to DB polling
+    }
+
+    if (!replayWorked) {
+      // SSE replay unavailable — fall back to DB polling
+      rememberActiveSession(null);
+      const hasAssistantReply = msgRes.messages.some(
+        (m) => m.role === 'assistant' && m.content && m.content.length > 0,
+      );
+      if (hasAssistantReply) {
+        setMessages(hydrateCodeMessages(msgRes.messages));
+        setSending(false);
+      } else {
+        setSending(false);
+        scheduleCodeRetry(c.Id);
+      }
+      return;
+    }
+
+    setSending(false);
+    if (streamAbortRef.current === controller) {
+      streamAbortRef.current = null;
+    }
+    void refreshSessions();
+  }
 
 
   function hydrateCodeMessages(rows: CodeMessageRow[]): CodeMessage[] {
@@ -458,6 +648,7 @@ export function CodePage() {
       );
 
       let gotConversationId = false;
+      let streamJobId: string | null = null;
       // If we already have a conversationId (continuing an existing session),
       // remember it before streaming starts so a tab-nav leave-return resumes
       // this session without waiting for the first meta event.
@@ -490,10 +681,15 @@ export function CodePage() {
             );
           });
         } else if (ev.type === 'meta') {
+          if (ev.job_id) streamJobId = ev.job_id;
           if (ev.conversation_id && !gotConversationId) {
             setConversationId(ev.conversation_id);
-            rememberActiveSession(ev.conversation_id);
             gotConversationId = true;
+          }
+          // Persist both conversationId and jobId so SSE replay works on resume
+          const cId = ev.conversation_id ?? conversationId;
+          if (cId != null) {
+            rememberActiveSession(cId, streamJobId ?? undefined);
           }
         } else if (ev.type === 'plan_checklist') {
           setChecklist(ev.steps ?? []);
@@ -512,15 +708,17 @@ export function CodePage() {
             ),
           );
         } else if (ev.type === 'done') {
+          // Stream completed — clear the active session so resume doesn't fire
+          rememberActiveSession(null);
           if (ev.conversation_id && !gotConversationId) {
             setConversationId(ev.conversation_id);
-            rememberActiveSession(ev.conversation_id);
             gotConversationId = true;
           }
           setMessages((ms) =>
             ms.map((x) => (x.id === pendingId ? { ...x, status: 'complete', isThinking: false } : x)),
           );
         } else if (ev.type === 'error') {
+          rememberActiveSession(null);
           setMessages((ms) =>
             ms.map((x) =>
               x.id === pendingId

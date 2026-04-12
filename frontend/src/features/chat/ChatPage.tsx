@@ -290,7 +290,7 @@ export function ChatPage() {
         }
         if (ev.type === 'searching') {
           setMessages((ms) =>
-            ms.map((x) => (x.id === pendingId ? { ...x, status: 'searching' } : x)),
+            ms.map((x) => (x.id === pendingId ? { ...x, status: 'searching', toolStatus: undefined, isThinking: false } : x)),
           );
           continue;
         }

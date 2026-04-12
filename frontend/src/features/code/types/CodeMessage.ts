@@ -11,4 +11,6 @@ export interface CodeMessage {
   sourceUserText?: string;
   sourceMode?: Mode;
   sourceApprovedPlan?: string | null;
+  toolStatus?: string;
+  reconnecting?: boolean;
 }

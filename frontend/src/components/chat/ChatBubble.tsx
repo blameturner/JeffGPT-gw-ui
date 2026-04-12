@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { AgentOutput } from '../../api/types/AgentOutput';
 import type { DisplayMessage } from './DisplayMessage';
 import { ConfidenceBanner } from './ConfidenceBanner';
@@ -14,14 +15,49 @@ import { typingLabelForIntent } from '../../lib/intent/typingLabelForIntent';
 interface Props {
   message: DisplayMessage;
   onRetry?: (message: DisplayMessage) => void;
+  onEdit?: (message: DisplayMessage) => void;
 }
 
-export function ChatBubble({ message, onRetry }: Props) {
+const BUBBLE_MAX = 'max-w-[92%] md:max-w-[80%]';
+
+function formatTimestamp(ms: number | undefined): string | undefined {
+  if (ms == null) return undefined;
+  try {
+    return new Date(ms).toLocaleString();
+  } catch {
+    return undefined;
+  }
+}
+
+export function ChatBubble({ message, onRetry, onEdit }: Props) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyContent() {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {}
+  }
+
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end animate-fadeIn">
-        <div className="max-w-[92%] md:max-w-[78%] px-4 py-3 rounded-2xl rounded-br-sm text-[15px] leading-relaxed whitespace-pre-wrap bg-fg text-bg font-medium">
-          {message.content}
+      <div className="group flex justify-end animate-fadeIn" title={formatTimestamp(message.startedAt)}>
+        <div className="flex flex-col items-end gap-1 min-w-0">
+          <div className={`${BUBBLE_MAX} px-4 py-3 rounded-2xl rounded-br-sm text-[15px] leading-relaxed whitespace-pre-wrap bg-fg text-bg font-medium`}>
+            {message.content}
+          </div>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() => onEdit(message)}
+              aria-label="Edit and resend"
+              title="Edit and resend"
+              className="text-[10px] uppercase tracking-[0.14em] font-sans text-muted hover:text-fg opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            >
+              ✎ Edit
+            </button>
+          )}
         </div>
       </div>
     );
@@ -40,14 +76,20 @@ export function ChatBubble({ message, onRetry }: Props) {
   if (message.status === 'pending' || message.status === 'searching') {
     return (
       <div className="flex justify-start animate-fadeIn">
-        <div className="max-w-[92%] md:max-w-[78%] px-4 py-3 rounded-2xl rounded-bl-sm text-[15px] leading-relaxed bg-panel border border-border text-muted italic">
+        <div className={`${BUBBLE_MAX} px-4 py-3 rounded-2xl rounded-bl-sm text-[15px] leading-relaxed bg-panel border border-border text-muted italic`}>
           {(() => {
+            if (message.toolStatus) return message.toolStatus;
             if (message.status === 'searching') return 'Searching the web';
             const label = typingLabelForIntent(message.intent);
             if (label) return label + '…';
             return <ThinkingLabel />;
           })()}{' '}
           <ElapsedTimer startedAt={message.startedAt} />
+          {message.reconnecting && (
+            <span className="ml-2 text-[10px] uppercase tracking-[0.14em] not-italic text-muted/80">
+              · reconnecting
+            </span>
+          )}
           <span className="caret" />
         </div>
       </div>
@@ -57,7 +99,7 @@ export function ChatBubble({ message, onRetry }: Props) {
   if (message.status === 'error') {
     return (
       <div className="flex justify-start animate-fadeIn">
-        <div className="max-w-[92%] md:max-w-[78%] px-4 py-3 rounded-2xl rounded-bl-sm text-[13px] leading-relaxed bg-panel border border-red-600/40 text-red-600 font-sans">
+        <div className={`${BUBBLE_MAX} px-4 py-3 rounded-2xl rounded-bl-sm text-[13px] leading-relaxed bg-panel border border-red-600/40 text-red-600 font-sans`}>
           <p className="break-words">
             {message.errorMessage || message.content || 'Request failed'}
           </p>
@@ -76,6 +118,7 @@ export function ChatBubble({ message, onRetry }: Props) {
   }
 
   const isStreaming = message.status === 'streaming';
+  const showCopy = message.status === 'complete' && !!message.content;
 
   if (message.parsedOutput && typeof message.parsedOutput === 'object') {
     const output = message.parsedOutput as unknown as AgentOutput;
@@ -86,8 +129,8 @@ export function ChatBubble({ message, onRetry }: Props) {
     };
 
     return (
-      <div className="flex justify-start animate-fadeIn">
-        <div className="max-w-[94%] md:max-w-[85%] bg-panel border border-border rounded-2xl rounded-bl-sm p-5 space-y-4">
+      <div className="group flex justify-start animate-fadeIn" title={formatTimestamp(message.startedAt)}>
+        <div className={`${BUBBLE_MAX} bg-panel border border-border rounded-2xl rounded-bl-sm p-5 space-y-4`}>
           <header className="flex items-start justify-between gap-4">
             <h2 className="font-display text-xl font-semibold leading-tight">{output.title}</h2>
             <span
@@ -118,14 +161,20 @@ export function ChatBubble({ message, onRetry }: Props) {
               ))}
             </div>
           )}
+
+          {showCopy && (
+            <div className="pt-1">
+              <CopyButton copied={copied} onCopy={copyContent} />
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex justify-start animate-fadeIn">
-      <div className="max-w-[94%] md:max-w-[85%] px-5 py-4 rounded-2xl rounded-bl-sm bg-panel border border-border text-fg markdown-body">
+    <div className="group flex justify-start animate-fadeIn" title={formatTimestamp(message.startedAt)}>
+      <div className={`${BUBBLE_MAX} px-5 py-4 rounded-2xl rounded-bl-sm bg-panel border border-border text-fg markdown-body`}>
         {message.intent && (
           <div className="mb-2">
             <IntentChip intent={message.intent} />
@@ -139,7 +188,26 @@ export function ChatBubble({ message, onRetry }: Props) {
           sources={message.sources ?? []}
           layout={resolveSourceLayout(message.intent, !!message.sources?.length)}
         />
+        {showCopy && (
+          <div className="mt-2 -mb-1">
+            <CopyButton copied={copied} onCopy={copyContent} />
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function CopyButton({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      aria-label={copied ? 'Copied' : 'Copy message'}
+      title={copied ? 'Copied' : 'Copy message'}
+      className="text-[10px] uppercase tracking-[0.14em] font-sans text-muted hover:text-fg inline-flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 transition-opacity"
+    >
+      {copied ? '✓ Copied' : '⧉ Copy'}
+    </button>
   );
 }

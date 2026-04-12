@@ -21,4 +21,6 @@ export interface DisplayMessage {
   responseStyle?: string | null;
   sourceUserText?: string;
   parsedOutput?: unknown;
+  toolStatus?: string;
+  reconnecting?: boolean;
 }

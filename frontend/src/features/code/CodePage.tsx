@@ -32,6 +32,9 @@ import { isTransientNetworkError } from '../../lib/network/isTransientNetworkErr
 import { useOnVisibilityResume } from '../../hooks/useOnVisibilityResume';
 import { useWasRecentlyHidden } from '../../hooks/useWasRecentlyHidden';
 import { uid } from '../../lib/utils/uid';
+import { labelForTool } from '../../lib/intent/labelForTool';
+import { formatBytes } from '../../lib/utils/formatBytes';
+import { useAutoScrollToBottom } from '../chat/hooks/useAutoScrollToBottom';
 import type { Mode } from './types/Mode';
 import type { CodeMessage } from './types/CodeMessage';
 import type { AttachedFile } from './types/AttachedFile';
@@ -40,12 +43,29 @@ import { parseCodeBlocks } from './utils/parseCodeBlocks';
 import { fileToBase64 } from './utils/fileToBase64';
 import { b64ToUtf8 } from './utils/b64ToUtf8';
 import { utf8ToB64 } from './utils/utf8ToB64';
-import { downloadBlob } from './utils/downloadBlob';
 import { cleanUserContent } from './utils/cleanUserContent';
 import { DESTRUCTIVE_RE } from './constants/DESTRUCTIVE_RE';
 import { CodeBlockCard } from './CodeBlockCard';
 import { CodebaseManager } from './CodebaseManager';
 import { SidebarBody } from './SidebarBody';
+
+const STARTER_PROMPTS: Record<Mode, string[]> = {
+  plan: [
+    'Outline a migration from Express to Fastify for this repo',
+    'Plan adding JWT auth to the attached server.js',
+    'Break down refactoring this file into pure functions',
+  ],
+  execute: [
+    'Implement step 1 from the approved plan',
+    'Write the tests for the happy path',
+    'Apply the plan to server.js and show the full file',
+  ],
+  debug: [
+    'The attached stack trace crashes on startup — find the cause',
+    'Why is this query returning no rows?',
+    'Explain what this function does line by line',
+  ],
+};
 
 export function CodePage() {
   const [models, setModels] = useState<LlmModel[]>([]);
@@ -64,6 +84,17 @@ export function CodePage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef(conversationId);
   conversationIdRef.current = conversationId;
+  // Persistence across tab navigation: when the user leaves and comes back,
+  // we want an in-flight code session to auto-resume instead of showing the
+  // default new-session view.
+  const ACTIVE_CODE_SESSION_KEY = 'codeActiveSession';
+  const autoResumeTriedRef = useRef(false);
+  function rememberActiveSession(id: number | null) {
+    try {
+      if (id == null) window.localStorage.removeItem(ACTIVE_CODE_SESSION_KEY);
+      else window.localStorage.setItem(ACTIVE_CODE_SESSION_KEY, String(id));
+    } catch {}
+  }
 
   const [checklist, setChecklist] = useState<string[]>([]);
   const [checked, setChecked] = useState<Record<number, boolean>>({});
@@ -77,7 +108,7 @@ export function CodePage() {
   const [codeStyles, setCodeStyles] = useState<StyleSurface | null>(null);
   const [styleKey, setStyleKey] = useState<string>('');
 
-  const [runOutput, setRunOutput] = useState<Record<string, string>>({});
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   const [sessionsSheetOpen, setSessionsSheetOpen] = useState(false);
   const [railSheetOpen, setRailSheetOpen] = useState(false);
@@ -103,7 +134,7 @@ export function CodePage() {
   }
   const vis = useWasRecentlyHidden();
   const bootOkRef = useRef(false);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const { scrollRef, isAtBottom, scrollToBottom } = useAutoScrollToBottom(messages);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,11 +205,36 @@ export function CodePage() {
     void refreshSessions();
   }, [refreshSessions]);
 
-
+  // Auto-resume in-flight session after tab navigation or reload.
+  // Runs once after the sessions list first populates: if localStorage
+  // remembers a session id and that session is still processing, call
+  // selectSession so scheduleCodeRetry takes over polling until completion.
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+    if (autoResumeTriedRef.current) return;
+    if (sessionsLoading) return;
+    if (sessions.length === 0) return;
+    autoResumeTriedRef.current = true;
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(ACTIVE_CODE_SESSION_KEY);
+    } catch {
+      return;
+    }
+    if (!saved) return;
+    const id = parseInt(saved, 10);
+    if (!Number.isFinite(id)) {
+      rememberActiveSession(null);
+      return;
+    }
+    const c = sessions.find((s) => s.Id === id);
+    if (!c) {
+      rememberActiveSession(null);
+      return;
+    }
+    void selectSession(c);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, sessionsLoading]);
+
 
   function hydrateCodeMessages(rows: CodeMessageRow[]): CodeMessage[] {
     return rows.map((r) => ({
@@ -194,6 +250,7 @@ export function CodePage() {
   async function selectSession(c: CodeConversation) {
     if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setConversationId(c.Id);
+    rememberActiveSession(c.Id);
     setMessages([]);
     setFiles([]);
     setApprovedPlan(null);
@@ -222,6 +279,7 @@ export function CodePage() {
           mode: c.mode ?? 'plan',
           content: '',
           status: 'streaming',
+          reconnecting: true,
         }]);
         scheduleCodeRetry(c.Id);
       } else if (convStatus === 'error') {
@@ -246,6 +304,7 @@ export function CodePage() {
 
   function newSession() {
     if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+    rememberActiveSession(null);
     setConversationId(null);
     setMessages([]);
     setFiles([]);
@@ -255,14 +314,15 @@ export function CodePage() {
     setError(null);
     setRagEnabled(false);
     setKnowledgeEnabled(false);
+    setMode('plan');
   }
 
-  async function renameSession(c: CodeConversation) {
-    const next = window.prompt('Rename session', c.title || '');
-    if (!next || next === c.title) return;
+  async function renameSession(c: CodeConversation, nextTitle: string) {
     try {
-      await renameCodeConversation(c.Id, next);
-      await refreshSessions();
+      await renameCodeConversation(c.Id, nextTitle);
+      setSessions((prev) =>
+        prev.map((s) => (s.Id === c.Id ? { ...s, title: nextTitle } : s)),
+      );
     } catch (err) {
       setError((err as Error)?.message ?? 'Rename failed');
     }
@@ -358,8 +418,8 @@ export function CodePage() {
     if (!forcedText) setInput('');
     setSending(true);
     setError(null);
-    setChecklist([]);
-    setChecked({});
+    // checklist only resets when a new plan_checklist event arrives — keeps
+    // user-ticked boxes intact across follow-up turns
 
     const payloadFiles: CodeFilePayload[] = files.map((f) => ({
       name: f.name,
@@ -388,14 +448,29 @@ export function CodePage() {
       );
 
       let gotConversationId = false;
+      // If we already have a conversationId (continuing an existing session),
+      // remember it before streaming starts so a tab-nav leave-return resumes
+      // this session without waiting for the first meta event.
+      if (conversationId != null) rememberActiveSession(conversationId);
       for await (const ev of stream) {
         if (ev.type === 'chunk') {
           setMessages((ms) =>
             ms.map((x) => (x.id === pendingId ? { ...x, content: x.content + ev.text } : x)),
           );
+        } else if (ev.type === 'tool_status') {
+          const label =
+            ev.phase === 'planning'
+              ? ev.summary || 'Planning tools…'
+              : ev.phase === 'start'
+              ? `${labelForTool(ev.tool)}…`
+              : undefined;
+          setMessages((ms) =>
+            ms.map((x) => (x.id === pendingId ? { ...x, toolStatus: label } : x)),
+          );
         } else if (ev.type === 'meta') {
           if (ev.conversation_id && !gotConversationId) {
             setConversationId(ev.conversation_id);
+            rememberActiveSession(ev.conversation_id);
             gotConversationId = true;
           }
         } else if (ev.type === 'plan_checklist') {
@@ -404,12 +479,17 @@ export function CodePage() {
         } else if (ev.type === 'done') {
           if (ev.conversation_id && !gotConversationId) {
             setConversationId(ev.conversation_id);
+            rememberActiveSession(ev.conversation_id);
             gotConversationId = true;
           }
+          // Message completed normally — no longer in-flight, drop the key
+          // so a later tab-nav doesn't re-resume a finished session.
+          rememberActiveSession(null);
           setMessages((ms) =>
             ms.map((x) => (x.id === pendingId ? { ...x, status: 'complete' } : x)),
           );
         } else if (ev.type === 'error') {
+          rememberActiveSession(null);
           setMessages((ms) =>
             ms.map((x) =>
               x.id === pendingId
@@ -443,6 +523,28 @@ export function CodePage() {
     }
   }
 
+  async function copyMessage(m: CodeMessage) {
+    try {
+      await navigator.clipboard.writeText(m.content);
+      setCopiedMessageId(m.id);
+      setTimeout(() => setCopiedMessageId((cur) => (cur === m.id ? null : cur)), 1400);
+    } catch {}
+  }
+
+  function editUserMessage(m: CodeMessage) {
+    if (m.role !== 'user') return;
+    setMessages((ms) => {
+      const idx = ms.findIndex((x) => x.id === m.id);
+      if (idx < 0) return ms;
+      const toDrop = new Set([m.id]);
+      const next = ms[idx + 1];
+      if (next && next.role === 'assistant') toDrop.add(next.id);
+      return ms.filter((x) => !toDrop.has(x.id));
+    });
+    setInput(m.content);
+    if (m.mode) setMode(m.mode);
+  }
+
   function retryMessage(m: CodeMessage) {
     if (!m.sourceUserText) return;
     setMessages((ms) => {
@@ -462,7 +564,6 @@ export function CodePage() {
   function applyAll(blocks: CodeBlock[]) {
     const targeted = blocks.filter((b) => b.file);
     if (targeted.length < 2) return;
-    for (const b of targeted) downloadBlob(b.file!, b.code);
     const merged: AttachedFile[] = [
       ...files.filter((f) => !targeted.find((t) => t.file === f.name)),
       ...targeted.map((b) => ({
@@ -475,26 +576,19 @@ export function CodePage() {
     setFiles(merged);
   }
 
-  async function runSandbox(m: CodeMessage, code: string) {
+  async function runSandbox(code: string): Promise<string> {
     if (DESTRUCTIVE_RE.test(code)) {
-      if (!window.confirm('This block looks destructive. Run anyway?')) return;
+      if (!window.confirm('This block looks destructive. Run anyway?')) {
+        throw new Error('cancelled');
+      }
     }
-    setRunOutput((o) => ({ ...o, [m.id]: 'Running…' }));
-    try {
-      const res = await fetch('/api/code/run', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
-      const text = await res.text();
-      setRunOutput((o) => ({ ...o, [m.id]: text || '(no output)' }));
-    } catch (err) {
-      setRunOutput((o) => ({
-        ...o,
-        [m.id]: `Run failed: ${(err as Error)?.message ?? 'unknown'}`,
-      }));
-    }
+    const res = await fetch('/api/code/run', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    return await res.text();
   }
 
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
@@ -564,7 +658,14 @@ export function CodePage() {
               Code blocks from the latest assistant message will appear here.
             </p>
           ) : (
-            lastBlocks.map((b) => <CodeBlockCard key={b.index} block={b} workspace={files} />)
+            lastBlocks.map((b) => (
+              <CodeBlockCard
+                key={b.index}
+                block={b}
+                workspace={files}
+                onRun={(code) => runSandbox(code)}
+              />
+            ))
           )}
         </div>
         <CodebaseManager codebases={codebases} onUpdate={(cbs) => setCodebases(cbs)} />
@@ -581,7 +682,7 @@ export function CodePage() {
           conversationId={conversationId}
           onNewSession={newSession}
           onSelectSession={(c) => void selectSession(c)}
-          onRenameSession={(c) => void renameSession(c)}
+          onRenameSession={(c, next) => renameSession(c, next)}
         />
       </aside>
 
@@ -597,7 +698,7 @@ export function CodePage() {
           conversationId={conversationId}
           onNewSession={newSession}
           onSelectSession={(c) => void selectSession(c)}
-          onRenameSession={(c) => void renameSession(c)}
+          onRenameSession={(c, next) => renameSession(c, next)}
           onPick={() => setSessionsSheetOpen(false)}
         />
       </Sheet>
@@ -643,17 +744,37 @@ export function CodePage() {
         </header>
 
         {approvedPlan && (
-          <div className="border-b border-border px-6 py-2 bg-panel/40 flex items-center justify-between">
-            <span className="text-[11px] font-sans text-muted">
-              Plan approved — injected on execute turns
-            </span>
-            <button
-              onClick={() => setApprovedPlan(null)}
-              className="text-[10px] uppercase tracking-[0.14em] text-fg hover:underline underline-offset-4"
-            >
-              Clear
-            </button>
-          </div>
+          <details className="border-b border-border bg-panel/40 group">
+            <summary className="px-3 sm:px-6 py-2 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+              <span className="text-[11px] font-sans text-muted min-w-0 truncate flex items-center gap-2">
+                <span className="uppercase tracking-[0.14em] text-fg shrink-0">Plan ✓</span>
+                <span className="truncate">
+                  {approvedPlan.split('\n').find((l) => l.trim()) ?? 'approved plan active'}
+                </span>
+              </span>
+              <span className="flex items-center gap-3 shrink-0">
+                <span className="text-muted text-[10px] transition-transform group-open:rotate-90">▸</span>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setApprovedPlan(null);
+                  }}
+                  className="text-[10px] uppercase tracking-[0.14em] text-fg hover:underline underline-offset-4"
+                >
+                  Clear
+                </button>
+              </span>
+            </summary>
+            <div className="px-3 sm:px-6 pb-3 pt-1">
+              <pre className="text-[11.5px] font-sans text-fg whitespace-pre-wrap max-h-60 overflow-auto border border-border rounded bg-bg p-3">
+                {approvedPlan}
+              </pre>
+              <p className="text-[10px] uppercase tracking-[0.14em] font-sans text-muted mt-2">
+                Injected on every execute turn
+              </p>
+            </div>
+          </details>
         )}
 
         <div
@@ -663,89 +784,122 @@ export function CodePage() {
           }`}
         >
           {messages.length === 0 ? (
-            <div className="pt-16 text-center">
+            <div className="pt-12 md:pt-16 text-center px-2">
               <p className="font-display text-3xl font-semibold tracking-tightest">
                 Code with Jeff.
               </p>
               <p className="text-muted text-sm mt-3 font-sans">
                 Plan first · approve · Knead
               </p>
-              <p className="text-muted text-[11px] mt-6 font-sans">
+              {model && (
+                <div className="mt-6 flex flex-wrap justify-center gap-2">
+                  {STARTER_PROMPTS[mode].map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setInput(p)}
+                      className="text-[12px] sm:text-[13px] font-sans px-3 py-1.5 rounded-full border border-border text-muted bg-panel/40 hover:border-fg hover:text-fg transition-colors max-w-full text-left"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-muted text-[11px] mt-8 font-sans">
                 Drop files anywhere to attach.
               </p>
             </div>
           ) : (
             messages.map((m) => {
               const blocks = m.role === 'assistant' ? parseCodeBlocks(m.content) : [];
-              const out = runOutput[m.id];
               return (
                 <div
                   key={m.id}
-                  className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
+                  className={`group ${m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}`}
                 >
-                  <div
-                    className={[
-                      'max-w-[94%] md:max-w-[85%] px-4 py-3 rounded-2xl text-[14px] leading-relaxed',
-                      m.role === 'user'
-                        ? 'bg-fg text-bg rounded-br-sm whitespace-pre-wrap'
-                        : 'bg-panel border border-border text-fg rounded-bl-sm markdown-body',
-                    ].join(' ')}
-                  >
-                    <div className="text-[9px] uppercase tracking-[0.16em] font-sans text-muted mb-1 flex items-center gap-2">
-                      <span>{m.mode}</span>
-                      {m.role === 'assistant' && m.responseStyle && (
-                        <span className="inline-flex items-center gap-1 text-muted">
-                          <span className="w-1 h-1 rounded-full bg-fg/50" />
-                          {styleLabel(m.responseStyle)}
-                        </span>
-                      )}
-                    </div>
-                    {m.role === 'user' ? (
-                      m.content
-                    ) : m.status === 'error' ? (
-                      <div className="text-red-600 font-sans text-[12px]">
-                        <p className="break-words">
-                          {m.errorMessage || 'Request failed'}
-                        </p>
-                        {m.sourceUserText && (
-                          <button
-                            type="button"
-                            onClick={() => retryMessage(m)}
-                            className="mt-2 text-[10px] uppercase tracking-[0.14em] font-sans border border-red-600/60 text-red-600 px-2.5 py-1 rounded hover:bg-red-600 hover:text-bg transition-colors"
-                          >
-                            ↻ Retry
-                          </button>
+                  <div className="flex flex-col min-w-0 max-w-[94%] md:max-w-[85%] items-stretch">
+                    <div
+                      className={[
+                        'px-4 py-3 rounded-2xl text-[14px] leading-relaxed',
+                        m.role === 'user'
+                          ? 'bg-fg text-bg rounded-br-sm whitespace-pre-wrap self-end'
+                          : 'bg-panel border border-border text-fg rounded-bl-sm markdown-body',
+                      ].join(' ')}
+                    >
+                      <div className="text-[9px] uppercase tracking-[0.16em] font-sans text-muted mb-1 flex items-center gap-2">
+                        <span>{m.mode}</span>
+                        {m.role === 'assistant' && m.responseStyle && (
+                          <span className="inline-flex items-center gap-1 text-muted">
+                            <span className="w-1 h-1 rounded-full bg-fg/50" />
+                            {styleLabel(m.responseStyle)}
+                          </span>
                         )}
                       </div>
-                    ) : (
-                      <>
-                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{m.content}</ReactMarkdown>
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {m.mode === 'plan' && m.status === 'complete' && (
+                      {m.role === 'user' ? (
+                        m.content
+                      ) : m.status === 'error' ? (
+                        <div className="text-red-600 font-sans text-[12px]">
+                          <p className="break-words">
+                            {m.errorMessage || 'Request failed'}
+                          </p>
+                          {m.sourceUserText && (
                             <button
-                              onClick={() => approvePlan(m)}
-                              className="text-[11px] uppercase tracking-[0.14em] font-sans border border-fg px-3 py-1 rounded hover:bg-fg hover:text-bg transition-colors"
+                              type="button"
+                              onClick={() => retryMessage(m)}
+                              className="mt-2 text-[10px] uppercase tracking-[0.14em] font-sans border border-red-600/60 text-red-600 px-2.5 py-1 rounded hover:bg-red-600 hover:text-bg transition-colors"
                             >
-                              Approve &amp; execute
+                              ↻ Retry
                             </button>
                           )}
-                          {m.mode === 'execute' &&
-                            m.status === 'complete' &&
-                            blocks.length > 0 && (
+                        </div>
+                      ) : (
+                        <>
+                          {m.status === 'streaming' && m.toolStatus && (
+                            <div className="text-[11px] italic text-muted mb-2 font-sans">
+                              {m.toolStatus}
+                              {m.reconnecting && (
+                                <span className="ml-2 not-italic uppercase tracking-[0.14em] text-muted/80">
+                                  · reconnecting
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {m.status === 'streaming' && !m.content && !m.toolStatus && (
+                            <div className="text-[11px] italic text-muted mb-2 font-sans">
+                              {m.reconnecting ? 'Reconnecting…' : 'Thinking…'}
+                            </div>
+                          )}
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{m.content}</ReactMarkdown>
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {m.mode === 'plan' && m.status === 'complete' && (
                               <button
-                                onClick={() => void runSandbox(m, blocks[0].code)}
-                                className="text-[11px] uppercase tracking-[0.14em] font-sans border border-border px-3 py-1 rounded hover:border-fg hover:text-fg transition-colors"
+                                onClick={() => approvePlan(m)}
+                                className="text-[11px] uppercase tracking-[0.14em] font-sans border border-fg px-3 py-1 rounded hover:bg-fg hover:text-bg transition-colors"
                               >
-                                Run in sandbox
+                                Approve &amp; execute
                               </button>
                             )}
-                        </div>
-                        {out && (
-                          <pre className="mt-3 font-mono text-[11.5px] bg-bg border border-border rounded p-2 whitespace-pre-wrap max-h-64 overflow-auto">
-                            {out}
-                          </pre>
-                        )}
-                      </>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {m.role === 'user' && !sending && (
+                      <button
+                        type="button"
+                        onClick={() => editUserMessage(m)}
+                        className="self-end mt-1 text-[10px] uppercase tracking-[0.14em] font-sans text-muted hover:text-fg opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      >
+                        ✎ Edit
+                      </button>
+                    )}
+                    {m.role === 'assistant' && m.status === 'complete' && m.content && (
+                      <button
+                        type="button"
+                        onClick={() => void copyMessage(m)}
+                        className="self-start mt-1 text-[10px] uppercase tracking-[0.14em] font-sans text-muted hover:text-fg md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 transition-opacity"
+                      >
+                        {copiedMessageId === m.id ? '✓ Copied' : '⧉ Copy'}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -754,8 +908,26 @@ export function CodePage() {
           )}
         </div>
 
+        {!isAtBottom && messages.length > 0 && (
+          <div className="px-3 sm:px-6 pb-2 pointer-events-none">
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => scrollToBottom(true)}
+                className="pointer-events-auto text-[11px] uppercase tracking-[0.14em] font-sans px-3 py-1.5 rounded-full border border-border bg-panel/90 backdrop-blur text-fg hover:bg-panelHi transition-colors flex items-center gap-1.5 shadow-card"
+                aria-label="Jump to latest"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                Jump to latest
+              </button>
+            </div>
+          </div>
+        )}
+
         {error && (
-          <div className="px-6 pb-2">
+          <div className="px-3 sm:px-6 pb-2">
             <p className="text-xs text-red-600 font-sans">{error}</p>
           </div>
         )}
@@ -787,6 +959,9 @@ export function CodePage() {
           value={input}
           onChange={setInput}
           onSend={() => void send()}
+          onStop={() => {
+            streamAbortRef.current?.abort();
+          }}
           sending={sending}
           disabled={!model}
           placeholder={model ? `Describe the ${mode} task…` : 'Load a model to start'}
@@ -854,7 +1029,7 @@ export function CodePage() {
                     className="text-[11px] font-sans px-2 py-1 rounded border border-border bg-panel/60 flex items-center gap-2"
                   >
                     {f.name}
-                    <span className="text-muted">({f.size}b)</span>
+                    <span className="text-muted">{formatBytes(f.size)}</span>
                     <button
                       onClick={() => removeFile(f.name)}
                       className="text-muted hover:text-fg"
@@ -869,7 +1044,7 @@ export function CodePage() {
         />
       </div>
 
-      <div className="hidden xl:flex w-1/2 max-w-[720px] flex-col bg-panel/20">
+      <div className="hidden xl:flex w-2/5 max-w-[640px] flex-col bg-panel/20">
         {renderRailBody()}
       </div>
 

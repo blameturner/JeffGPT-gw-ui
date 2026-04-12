@@ -1,6 +1,7 @@
 import {
   useEffect,
   useRef,
+  useState,
   type ChangeEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -15,6 +16,7 @@ interface ComposerDockProps {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
+  onStop?: () => void;
   sending: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -35,6 +37,7 @@ export function ComposerDock({
   value,
   onChange,
   onSend,
+  onStop,
   sending,
   disabled,
   placeholder,
@@ -51,6 +54,7 @@ export function ComposerDock({
 }: ComposerDockProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [mobileRailOpen, setMobileRailOpen] = useState(false);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -73,11 +77,18 @@ export function ComposerDock({
   }
 
 
+  const railVisible = mobileRailOpen;
+
   return (
     <div className="border-t border-border bg-bg/95 backdrop-blur">
       <div className="relative">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fg/20 to-transparent" />
-        <div className="px-3 sm:px-5 pt-2 sm:pt-3 pb-2 flex items-stretch gap-3 sm:gap-5 overflow-x-auto no-scrollbar">
+        <div
+          className={[
+            'px-3 sm:px-5 pt-2 sm:pt-3 pb-2 items-stretch gap-3 sm:gap-5 flex-wrap sm:flex-nowrap overflow-x-auto no-scrollbar',
+            railVisible ? 'flex' : 'hidden sm:flex',
+          ].join(' ')}
+        >
           {leftRailSlot && (
             <>
               <DockZone label="Mode">{leftRailSlot}</DockZone>
@@ -159,6 +170,20 @@ export function ComposerDock({
       <div className="px-3 sm:px-5 pt-1 pb-3 sm:pb-4">
         {attachmentPreview && <div className="mb-2">{attachmentPreview}</div>}
         <div className="flex items-end gap-3 border border-border rounded-xl bg-panel/40 focus-within:border-fg transition-colors px-4 py-3 shadow-card">
+          <button
+            type="button"
+            onClick={() => setMobileRailOpen((v) => !v)}
+            aria-expanded={mobileRailOpen}
+            aria-label={mobileRailOpen ? 'Hide options' : 'Show options'}
+            className="sm:hidden shrink-0 w-9 h-9 rounded-md border border-border text-muted hover:border-fg hover:text-fg transition-colors flex items-center justify-center"
+            title="Options"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="1.5" />
+              <circle cx="5" cy="12" r="1.5" />
+              <circle cx="19" cy="12" r="1.5" />
+            </svg>
+          </button>
           {onAttach && (
             <>
               <button
@@ -188,16 +213,29 @@ export function ComposerDock({
             disabled={disabled || sending}
             className="flex-1 bg-transparent resize-none outline-none text-[15px] leading-relaxed placeholder:text-muted disabled:opacity-50 min-h-[1.6em] max-h-[220px] overflow-y-auto"
           />
-          <button
-            type="button"
-            onClick={onSend}
-            disabled={disabled || sending || !value.trim()}
-            className="shrink-0 px-4 py-2 rounded-md bg-fg text-bg text-sm font-medium tracking-wide hover:bg-fg/85 transition-colors disabled:opacity-40"
-          >
-            {sending ? '…' : 'Send'}
-          </button>
+          {sending && onStop ? (
+            <button
+              type="button"
+              onClick={onStop}
+              aria-label="Stop generating"
+              title="Stop generating"
+              className="shrink-0 px-4 py-2 rounded-md border border-fg text-fg text-sm font-medium tracking-wide hover:bg-fg hover:text-bg transition-colors flex items-center gap-2"
+            >
+              <span className="w-2.5 h-2.5 bg-current rounded-[1px]" />
+              <span className="hidden sm:inline">Stop</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={disabled || sending || !value.trim()}
+              className="shrink-0 px-4 py-2 rounded-md bg-fg text-bg text-sm font-medium tracking-wide hover:bg-fg/85 transition-colors disabled:opacity-40"
+            >
+              {sending ? '…' : 'Send'}
+            </button>
+          )}
         </div>
-        <p className="text-[10px] uppercase tracking-[0.14em] text-muted font-sans mt-2">
+        <p className="hidden sm:block text-[10px] uppercase tracking-[0.14em] text-muted font-sans mt-2">
           Enter to send · Shift+Enter for newline
         </p>
       </div>

@@ -27,7 +27,14 @@ import { useWasRecentlyHidden } from '../../hooks/useWasRecentlyHidden';
 import { uid } from '../../lib/utils/uid';
 import { SidebarBody } from './SidebarBody';
 import { useAutoScrollToBottom } from './hooks/useAutoScrollToBottom';
+import { labelForTool } from '../../lib/intent/labelForTool';
 import type { ConsentRequest } from './types/ConsentRequest';
+
+const EMPTY_STATE_PROMPTS = [
+  'Summarise the last week of my work',
+  'Help me plan a focused day',
+  'Explain something I should understand by now',
+];
 
 export function ChatPage() {
   const navigate = useNavigate();
@@ -103,7 +110,7 @@ export function ChatPage() {
     }
   }
 
-  const scrollRef = useAutoScrollToBottom(messages);
+  const { scrollRef, isAtBottom, scrollToBottom } = useAutoScrollToBottom(messages);
 
   const vis = useWasRecentlyHidden();
   const initialLoadOkRef = useRef(false);
@@ -207,6 +214,7 @@ export function ChatPage() {
           content: '',
           status: 'pending',
           startedAt: Date.now(),
+          reconnecting: true,
         }]);
         setLoadingMessages(false);
         scheduleRetry(c.Id);
@@ -271,6 +279,18 @@ export function ChatPage() {
         if (ev.type === 'searching') {
           setMessages((ms) =>
             ms.map((x) => (x.id === pendingId ? { ...x, status: 'searching' } : x)),
+          );
+          continue;
+        }
+        if (ev.type === 'tool_status') {
+          const label =
+            ev.phase === 'planning'
+              ? ev.summary || 'Planning tools…'
+              : ev.phase === 'start'
+              ? `${labelForTool(ev.tool)}…`
+              : undefined;
+          setMessages((ms) =>
+            ms.map((x) => (x.id === pendingId ? { ...x, toolStatus: label } : x)),
           );
           continue;
         }
@@ -581,20 +601,19 @@ export function ChatPage() {
             </h2>
           </div>
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
-            <button
-              type="button"
+            <IconButton
               onClick={() => setDrawerOpen((v) => !v)}
-              className={[
-                'text-[11px] uppercase tracking-[0.14em] font-sans px-2 sm:px-3 py-1.5 rounded-md border transition-colors',
-                drawerOpen
-                  ? 'border-fg bg-fg text-bg'
-                  : 'border-border text-fg hover:bg-panelHi',
-              ].join(' ')}
-              title="Show Jeff properties"
+              label={drawerOpen ? 'Hide properties' : 'Show properties'}
+              active={drawerOpen}
             >
-              <span className="hidden sm:inline">Properties</span>
-              <span className="sm:hidden">Info</span>
-            </button>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <line x1="12" y1="8" x2="12" y2="8.01" />
+                <line x1="11" y1="12" x2="12" y2="12" />
+                <line x1="12" y1="12" x2="12" y2="16" />
+                <line x1="11" y1="16" x2="13" y2="16" />
+              </svg>
+            </IconButton>
           </div>
         </header>
 
@@ -603,13 +622,27 @@ export function ChatPage() {
             {loadingMessages ? (
               <p className="text-center text-muted text-sm pt-16">Loading conversation…</p>
             ) : messages.length === 0 ? (
-              <div className="pt-20 text-center">
-                <p className="font-display text-4xl font-semibold tracking-tightest leading-tight">
+              <div className="pt-16 md:pt-20 text-center px-2">
+                <p className="font-display text-3xl md:text-4xl font-semibold tracking-tightest leading-tight">
                   Ask Jeffy anything.
                 </p>
                 <p className="text-muted text-sm mt-3 font-sans">
                   {model ? `Model · ${model}` : 'Select a Jeff to begin'}
                 </p>
+                {model && (
+                  <div className="mt-8 flex flex-wrap justify-center gap-2">
+                    {EMPTY_STATE_PROMPTS.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setInput(p)}
+                        className="text-[12px] sm:text-[13px] font-sans px-3 py-1.5 rounded-full border border-border text-muted bg-panel/40 hover:border-fg hover:text-fg transition-colors"
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               messages.map((m) => (
@@ -628,6 +661,22 @@ export function ChatPage() {
                       });
                       void send(mm.sourceUserText);
                     }}
+                    onEdit={
+                      m.role === 'user' && !sending
+                        ? (mm) => {
+                            // drop this user msg and the assistant reply that follows (if any)
+                            setMessages((ms) => {
+                              const idx = ms.findIndex((x) => x.id === mm.id);
+                              if (idx < 0) return ms;
+                              const toDrop = new Set([mm.id]);
+                              const next = ms[idx + 1];
+                              if (next && next.role === 'assistant') toDrop.add(next.id);
+                              return ms.filter((x) => !toDrop.has(x.id));
+                            });
+                            setInput(mm.content);
+                          }
+                        : undefined
+                    }
                   />
                   {m.role === 'assistant' && m.status === 'complete' && m.responseStyle && (
                     <div className="flex justify-start">
@@ -666,24 +715,46 @@ export function ChatPage() {
           </div>
         </div>
 
+        {!isAtBottom && messages.length > 0 && (
+          <div className="px-3 sm:px-6 pb-2 pointer-events-none">
+            <div className="max-w-3xl mx-auto flex justify-center">
+              <button
+                type="button"
+                onClick={() => scrollToBottom(true)}
+                className="pointer-events-auto text-[11px] uppercase tracking-[0.14em] font-sans px-3 py-1.5 rounded-full border border-border bg-panel/90 backdrop-blur text-fg hover:bg-panelHi transition-colors flex items-center gap-1.5 shadow-card"
+                aria-label="Jump to latest"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                Jump to latest
+              </button>
+            </div>
+          </div>
+        )}
+
         {consentRequest && (
           <div className="px-3 sm:px-6 pb-2">
-            <div className="max-w-3xl mx-auto flex items-center gap-3 text-[13px] font-sans text-muted bg-panel border border-border rounded-lg px-4 py-2.5">
-              <span className="flex-1">This might benefit from a web search</span>
-              <button
-                type="button"
-                onClick={() => void resolveConsent(true)}
-                className="text-[11px] uppercase tracking-[0.14em] font-sans px-3 py-1.5 rounded-md bg-fg text-bg hover:bg-fg/85 transition-colors"
-              >
-                Search
-              </button>
-              <button
-                type="button"
-                onClick={() => void resolveConsent(false)}
-                className="text-[11px] uppercase tracking-[0.14em] font-sans px-3 py-1.5 rounded-md border border-border text-fg hover:bg-panelHi transition-colors"
-              >
-                Skip
-              </button>
+            <div className="max-w-3xl mx-auto flex flex-wrap items-center gap-2 sm:gap-3 text-[13px] font-sans text-muted bg-panel border border-border rounded-lg px-4 py-2.5">
+              <span className="w-full sm:w-auto sm:flex-1 min-w-0">
+                This might benefit from a web search
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => void resolveConsent(true)}
+                  className="text-[11px] uppercase tracking-[0.14em] font-sans px-3 py-1.5 rounded-md bg-fg text-bg hover:bg-fg/85 transition-colors"
+                >
+                  Search
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void resolveConsent(false)}
+                  className="text-[11px] uppercase tracking-[0.14em] font-sans px-3 py-1.5 rounded-md border border-border text-fg hover:bg-panelHi transition-colors"
+                >
+                  Skip
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -700,6 +771,9 @@ export function ChatPage() {
           value={input}
           onChange={setInput}
           onSend={() => void send()}
+          onStop={() => {
+            streamAbortRef.current?.abort();
+          }}
           sending={sending}
           disabled={!model}
           placeholder={model ? 'Message JeffGPT…' : 'Load a Jeff to start'}
@@ -763,8 +837,8 @@ export function ChatPage() {
             </div>
             <button
               onClick={() => setDrawerOpen(false)}
-              className="text-fg text-xl leading-none px-2 -mr-2 hover:opacity-60"
-              aria-label="Close"
+              className="shrink-0 w-9 h-9 -mr-2 rounded-md border border-border text-fg hover:bg-panelHi flex items-center justify-center text-xl leading-none"
+              aria-label="Close properties"
             >
               ×
             </button>
@@ -899,9 +973,12 @@ export function ChatPage() {
               </label>
             </section>
 
-            <section>
-              <div className="flex items-center justify-between mb-2">
+            <details open className="group">
+              <summary className="flex items-center justify-between mb-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
                 <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted">Stats</h4>
+                <span className="text-muted text-[10px] transition-transform group-open:rotate-90">▸</span>
+              </summary>
+              <div className="flex justify-end -mt-1 mb-2">
                 <button
                   onClick={() => void refreshStats()}
                   disabled={activeId == null || loadingStats}
@@ -988,13 +1065,16 @@ export function ChatPage() {
                   )}
                 </>
               )}
-            </section>
+            </details>
 
             {stats && stats.observations.length > 0 && (
-              <section>
-                <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
-                  Observations · {stats.observation_count}
-                </h4>
+              <details className="group">
+                <summary className="flex items-center justify-between mb-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                  <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted">
+                    Observations · {stats.observation_count}
+                  </h4>
+                  <span className="text-muted text-[10px] transition-transform group-open:rotate-90">▸</span>
+                </summary>
                 <ul className="space-y-3">
                   {stats.observations.map((o) => (
                     <li key={o.Id} className="border border-border rounded-md p-3 bg-bg">
@@ -1026,14 +1106,17 @@ export function ChatPage() {
                     </li>
                   ))}
                 </ul>
-              </section>
+              </details>
             )}
 
             {stats && stats.runs.length > 0 && (
-              <section>
-                <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
-                  Agent runs · {stats.run_count}
-                </h4>
+              <details className="group">
+                <summary className="flex items-center justify-between mb-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                  <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted">
+                    Agent runs · {stats.run_count}
+                  </h4>
+                  <span className="text-muted text-[10px] transition-transform group-open:rotate-90">▸</span>
+                </summary>
                 <ul className="space-y-3">
                   {stats.runs.map((r) => (
                     <li key={r.Id} className="border border-border rounded-md p-3 bg-bg">
@@ -1077,14 +1160,17 @@ export function ChatPage() {
                     </li>
                   ))}
                 </ul>
-              </section>
+              </details>
             )}
 
             {stats && stats.outputs.length > 0 && (
-              <section>
-                <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">
-                  Outputs · {stats.output_count}
-                </h4>
+              <details className="group">
+                <summary className="flex items-center justify-between mb-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                  <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted">
+                    Outputs · {stats.output_count}
+                  </h4>
+                  <span className="text-muted text-[10px] transition-transform group-open:rotate-90">▸</span>
+                </summary>
                 <ul className="space-y-3">
                   {stats.outputs.map((o) => (
                     <li key={o.Id} className="border border-border rounded-md p-3 bg-bg">
@@ -1097,7 +1183,7 @@ export function ChatPage() {
                     </li>
                   ))}
                 </ul>
-              </section>
+              </details>
             )}
           </div>
         </aside>

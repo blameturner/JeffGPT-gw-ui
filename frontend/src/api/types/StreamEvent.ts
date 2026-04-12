@@ -27,7 +27,18 @@ export type StreamEvent =
     }
   | { type: 'summarised'; removed: number; summary_chars: number }
   | { type: 'parsed'; output: AgentOutput | null }
-  | { type: 'searching' }
+  | { type: 'searching'; queries?: string[] }
+  | {
+      type: 'tool_status';
+      phase: 'planning' | 'start' | 'end';
+      tool?: string;
+      index?: number;
+      reason?: string;
+      summary?: string;
+      tools?: string[];
+      ok?: boolean;
+      elapsed_s?: number;
+    }
   | {
       type: 'search_complete';
       source_count: number;

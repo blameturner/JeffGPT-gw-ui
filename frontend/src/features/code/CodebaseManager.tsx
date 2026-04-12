@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { Codebase } from '../../api/types/Codebase';
 import { createCodebase } from '../../api/codebases/createCodebase';
 import { indexCodebase } from '../../api/codebases/indexCodebase';
@@ -18,7 +18,6 @@ export function CodebaseManager({
   const [saving, setSaving] = useState(false);
   const [indexing, setIndexing] = useState<number | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function create() {
     if (!name.trim()) return;
@@ -78,25 +77,28 @@ export function CodebaseManager({
                 </p>
               </div>
               <div className="shrink-0 flex items-center gap-1">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={indexing === cb.id}
-                  className="text-[10px] uppercase tracking-[0.12em] font-sans border border-border px-2 py-1 rounded hover:border-fg hover:text-fg transition-colors disabled:opacity-50"
+                <label
+                  className={[
+                    'text-[10px] uppercase tracking-[0.12em] font-sans border border-border px-2 py-1 rounded transition-colors cursor-pointer',
+                    indexing === cb.id
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:border-fg hover:text-fg',
+                  ].join(' ')}
                 >
                   {indexing === cb.id ? 'Indexing…' : 'Upload'}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) {
-                      void uploadFiles(cb.id, e.target.files);
-                    }
-                    e.target.value = '';
-                  }}
-                />
+                  <input
+                    type="file"
+                    multiple
+                    disabled={indexing === cb.id}
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        void uploadFiles(cb.id, e.target.files);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
               </div>
             </div>
           ))}

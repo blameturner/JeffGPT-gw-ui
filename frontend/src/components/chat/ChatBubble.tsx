@@ -261,6 +261,14 @@ export function ChatBubble({ message, onRetry, onEdit }: Props) {
             Deep research complete — results added below
           </div>
         )}
+        {message.status === 'complete' && message.errorMessage && (
+          <div className="mt-2 text-[11px] font-sans text-amber-600 bg-amber-500/10 border border-amber-600/30 rounded-md px-2.5 py-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+              Response not saved — copy before navigating away
+            </div>
+          </div>
+        )}
         <SourcesPanel
           sources={message.sources ?? []}
           layout={resolveSourceLayout(message.intent, !!message.sources?.length)}

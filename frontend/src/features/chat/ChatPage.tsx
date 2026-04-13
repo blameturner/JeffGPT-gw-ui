@@ -690,15 +690,30 @@ export function ChatPage() {
             ),
           );
         } else if (ev.type === 'error') {
-          clearActiveStream();
-          setMessages((ms) =>
-            ms.map((x) =>
+          let hadContent = false;
+          setMessages((ms) => {
+            const pending = ms.find((x) => x.id === pendingId);
+            hadContent = !!(pending && pending.content.length > 0);
+            if (hadContent) {
+              // Chunks already streamed — show error as a non-fatal warning,
+              // keep the content visible, and let the done event finalise.
+              return ms.map((x) =>
+                x.id === pendingId
+                  ? { ...x, errorMessage: ev.message }
+                  : x,
+              );
+            }
+            // No content yet — this is a real failure
+            return ms.map((x) =>
               x.id === pendingId
                 ? { ...x, status: 'error', errorMessage: ev.message }
                 : x,
-            ),
-          );
-          break;
+            );
+          });
+          if (!hadContent) {
+            clearActiveStream();
+            break;
+          }
         }
       }
 

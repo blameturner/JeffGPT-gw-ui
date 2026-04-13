@@ -51,11 +51,13 @@ export interface ChatState {
     userText: string,
     isFirstMessage: boolean,
     controller: AbortController,
+    ignorePlanEvents?: boolean,
   ) => Promise<{ conversationId: number | null; consentNeeded: boolean }>;
   runChatStream: (
     body: Parameters<typeof chatStream>[0],
     pendingId: string,
     userText: string,
+    ignorePlanEvents?: boolean,
   ) => Promise<{ conversationId: number | null; consentNeeded: boolean }>;
 }
 
@@ -86,6 +88,7 @@ export function useChat(deps: UseChatDeps): ChatState {
     userText: string,
     isFirstMessage: boolean,
     controller: AbortController,
+    ignorePlanEvents?: boolean,
   ): Promise<{ conversationId: number | null; consentNeeded: boolean }> {
     let newConversationId: number | null = null;
     let streamJobId: string | null = null;
@@ -185,6 +188,7 @@ export function useChat(deps: UseChatDeps): ChatState {
           continue;
         }
         if (ev.type === 'deep_search_plan') {
+          if (ignorePlanEvents) continue;
           setMessages((ms) =>
             ms.map((x) =>
               x.id === pendingId
@@ -195,6 +199,7 @@ export function useChat(deps: UseChatDeps): ChatState {
           continue;
         }
         if (ev.type === 'research_plan') {
+          if (ignorePlanEvents) continue;
           const planJson = JSON.stringify(ev.plan);
           setMessages((ms) =>
             ms.map((x) =>
@@ -415,11 +420,12 @@ export function useChat(deps: UseChatDeps): ChatState {
     body: Parameters<typeof chatStream>[0],
     pendingId: string,
     userText: string,
+    ignorePlanEvents?: boolean,
   ) {
     const controller = new AbortController();
     streamAbortRef.current = controller;
     const stream = chatStream(body, controller.signal);
-    return processStreamFn(stream, pendingId, userText, body.conversation_id == null, controller);
+    return processStreamFn(stream, pendingId, userText, body.conversation_id == null, controller, ignorePlanEvents);
   }
 
   async function send(forcedText?: string, searchModeOverride?: 'deep' | 'deep_approved' | 'research' | 'research_approved') {
@@ -462,6 +468,7 @@ export function useChat(deps: UseChatDeps): ChatState {
     const isFirstMessage = deps.activeId == null;
 
     try {
+      const isApproved = searchModeOverride === 'deep_approved' || searchModeOverride === 'research_approved';
       await runChatStreamFn(
         {
           model: deps.model,
@@ -475,6 +482,7 @@ export function useChat(deps: UseChatDeps): ChatState {
         },
         pendingId,
         text,
+        isApproved,
       );
     } finally {
       setSending(false);

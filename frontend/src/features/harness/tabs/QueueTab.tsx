@@ -28,7 +28,7 @@ export function QueueTab() {
   useEffect(() => {
     reload();
 
-    const es = new EventSource(`${gatewayUrl()}/tool-queue/events`, { withCredentials: true });
+    const es = new EventSource(`${gatewayUrl()}/api/queue/events`, { withCredentials: true });
     esRef.current = es;
 
     es.onmessage = (e) => {

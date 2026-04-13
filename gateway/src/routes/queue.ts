@@ -19,7 +19,7 @@ queueRoute.post('/submit', async (c) => {
   if (!body) return c.json({ error: 'invalid_body' }, 400);
   const { orgId } = getAuthContext(c);
   try {
-    const res = await harnessClient.post('/queue/submit', { ...body, org_id: Number(orgId) }, TIMEOUT);
+    const res = await harnessClient.post('/tool-queue/submit', { ...body, org_id: Number(orgId) }, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'queue');
@@ -28,7 +28,7 @@ queueRoute.post('/submit', async (c) => {
 
 queueRoute.get('/status', async (c) => {
   try {
-    const res = await harnessClient.get('/queue/status', TIMEOUT);
+    const res = await harnessClient.get('/tool-queue/status', TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'queue');
@@ -36,8 +36,9 @@ queueRoute.get('/status', async (c) => {
 });
 
 queueRoute.get('/jobs', async (c) => {
+  const qs = c.req.url.includes('?') ? `?${c.req.url.split('?')[1]}` : '';
   try {
-    const res = await harnessClient.get('/queue/jobs', TIMEOUT);
+    const res = await harnessClient.get(`/tool-queue/jobs${qs}`, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'queue');
@@ -47,7 +48,7 @@ queueRoute.get('/jobs', async (c) => {
 queueRoute.get('/jobs/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const res = await harnessClient.get(`/queue/jobs/${encodeURIComponent(id)}`, TIMEOUT);
+    const res = await harnessClient.get(`/tool-queue/jobs/${encodeURIComponent(id)}`, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'queue');
@@ -57,7 +58,7 @@ queueRoute.get('/jobs/:id', async (c) => {
 queueRoute.delete('/jobs/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const res = await harnessClient.delete(`/queue/jobs/${encodeURIComponent(id)}`, TIMEOUT);
+    const res = await harnessClient.delete(`/tool-queue/jobs/${encodeURIComponent(id)}`, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'queue');
@@ -73,7 +74,7 @@ queueRoute.patch('/jobs/:id/priority', async (c) => {
   if (!parsed.success) return c.json({ error: 'invalid_body', issues: parsed.error.issues }, 400);
   try {
     const res = await harnessClient.patch(
-      `/queue/jobs/${encodeURIComponent(id)}/priority`,
+      `/tool-queue/jobs/${encodeURIComponent(id)}/priority`,
       parsed.data,
       TIMEOUT,
     );
@@ -86,7 +87,7 @@ queueRoute.patch('/jobs/:id/priority', async (c) => {
 queueRoute.post('/jobs/:id/cancel', async (c) => {
   const id = c.req.param('id');
   try {
-    const res = await harnessClient.post(`/queue/jobs/${encodeURIComponent(id)}/cancel`, {}, TIMEOUT);
+    const res = await harnessClient.post(`/tool-queue/jobs/${encodeURIComponent(id)}/cancel`, {}, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'queue');
@@ -94,7 +95,7 @@ queueRoute.post('/jobs/:id/cancel', async (c) => {
 });
 
 queueRoute.get('/events', async (c) => {
-  const url = `${env.HARNESS_URL}/queue/events`;
+  const url = `${env.HARNESS_URL}/tool-queue/events`;
   try {
     const res = await fetch(url, { method: 'GET' });
     if (!res.ok || !res.body) {

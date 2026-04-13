@@ -27,6 +27,19 @@ export interface DisplayMessage {
   thinkingStartTime?: number;
   thinkingEndTime?: number;
   isThinking?: boolean;
+  deepSearchPlan?: {
+    queries: string[];
+    sources: SearchSource[];
+    status: 'awaiting_approval' | 'approved' | 'revised';
+  };
+  researchPlan?: {
+    question: string;
+    objective: string;
+    queries: string[];
+    lookout: string[];
+    completionCriteria: string[];
+    status: 'awaiting_approval' | 'approved' | 'revised';
+  };
   deepSearchStatus?: 'waiting' | 'done';
   deepSearchMessage?: string;
   topics?: string[];

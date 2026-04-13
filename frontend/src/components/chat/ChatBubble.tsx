@@ -9,6 +9,7 @@ import { ThinkingLabel } from './ThinkingLabel';
 import { ElapsedTimer } from './ElapsedTimer';
 import { OutputSection } from './OutputSection';
 import { MarkdownBody } from './MarkdownBody';
+import { PlanApprovalCard } from './PlanApprovalCard';
 import { resolveSourceLayout } from '../../lib/intent/resolveSourceLayout';
 import { typingLabelForIntent } from '../../lib/intent/typingLabelForIntent';
 
@@ -16,6 +17,8 @@ interface Props {
   message: DisplayMessage;
   onRetry?: (message: DisplayMessage) => void;
   onEdit?: (message: DisplayMessage) => void;
+  onPlanApprove?: (message: DisplayMessage) => void;
+  onPlanRevise?: (message: DisplayMessage, feedback: string) => void;
 }
 
 const BUBBLE_MAX = 'max-w-[92%] md:max-w-[80%]';
@@ -29,7 +32,7 @@ function formatTimestamp(ms: number | undefined): string | undefined {
   }
 }
 
-export function ChatBubble({ message, onRetry, onEdit }: Props) {
+export function ChatBubble({ message, onRetry, onEdit, onPlanApprove, onPlanRevise }: Props) {
   const [copied, setCopied] = useState(false);
 
   async function copyContent() {
@@ -260,6 +263,14 @@ export function ChatBubble({ message, onRetry, onEdit }: Props) {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             Deep research complete — results added below
           </div>
+        )}
+        {(message.deepSearchPlan || message.researchPlan) && (
+          <PlanApprovalCard
+            deepSearchPlan={message.deepSearchPlan}
+            researchPlan={message.researchPlan}
+            onApprove={() => onPlanApprove?.(message)}
+            onRevise={(fb) => onPlanRevise?.(message, fb)}
+          />
         )}
         {message.status === 'complete' && message.errorMessage && (
           <div className="mt-2 text-[11px] font-sans text-amber-600 bg-amber-500/10 border border-amber-600/30 rounded-md px-2.5 py-1.5">

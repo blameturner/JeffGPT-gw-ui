@@ -66,11 +66,28 @@ export function ChatPage() {
   const [ragEnabled, setRagEnabled] = useState(false);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
   const [researchEnabled, setResearchEnabled] = useState(false);
-  const [searchMode, setSearchMode] = useState<'normal' | 'deep'>('normal');
+  const [searchMode, setSearchMode] = useState<'normal' | 'deep' | 'research'>('normal');
   const [searchSuppressed, setSearchSuppressed] = useState(false);
   const [conversationTopics, setConversationTopics] = useState<string[]>([]);
   const streamAbortRef = useRef<AbortController | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Dismiss pending approval cards when mode resets to normal
+  useEffect(() => {
+    if (searchMode === 'normal') {
+      setMessages((ms) =>
+        ms.map((x) => {
+          if (!x.deepSearchPlan && !x.researchPlan) return x;
+          if (x.deepSearchPlan?.status !== 'awaiting_approval' && x.researchPlan?.status !== 'awaiting_approval') return x;
+          return {
+            ...x,
+            deepSearchPlan: x.deepSearchPlan ? { ...x.deepSearchPlan, status: 'revised' as const } : undefined,
+            researchPlan: x.researchPlan ? { ...x.researchPlan, status: 'revised' as const } : undefined,
+          };
+        }),
+      );
+    }
+  }, [searchMode]);
 
   function scheduleRetry(convId: number) {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
@@ -477,6 +494,7 @@ export function ChatPage() {
     let streamJobId: string | null = null;
     let consentNeeded = false;
     let consentArgs: { query: string; reason: string } | null = null;
+    let deepPlanQueries: string[] = [];
 
     try {
       for await (const ev of stream) {
@@ -501,10 +519,25 @@ export function ChatPage() {
           continue;
         }
         if (ev.type === 'jobs_queued') {
+          const label =
+            ev.status === 'running'
+              ? ev.message || (ev.tool === 'research' ? 'Research is running...' : 'Analysing sources...')
+              : ev.message;
           setMessages((ms) =>
             ms.map((x) =>
               x.id === pendingId
-                ? { ...x, deepSearchStatus: 'waiting' as const, deepSearchMessage: ev.message }
+                ? {
+                    ...x,
+                    deepSearchStatus: 'waiting' as const,
+                    deepSearchMessage: label,
+                    // Clear approval cards once jobs are running
+                    deepSearchPlan: x.deepSearchPlan
+                      ? { ...x.deepSearchPlan, status: 'approved' as const }
+                      : undefined,
+                    researchPlan: x.researchPlan
+                      ? { ...x.researchPlan, status: 'approved' as const }
+                      : undefined,
+                  }
                 : x,
             ),
           );
@@ -521,6 +554,7 @@ export function ChatPage() {
           continue;
         }
         if (ev.type === 'searching') {
+          if (ev.queries?.length) deepPlanQueries = ev.queries;
           flushSync(() => {
             setMessages((ms) =>
               ms.map((x) => (x.id === pendingId ? { ...x, status: 'searching', toolStatus: undefined } : x)),
@@ -558,6 +592,43 @@ export function ChatPage() {
               ),
             );
           });
+          continue;
+        }
+        if (ev.type === 'deep_search_plan') {
+          setMessages((ms) =>
+            ms.map((x) => {
+              if (x.id !== pendingId) return x;
+              const planSources = x.sources ?? [];
+              return {
+                ...x,
+                deepSearchPlan: {
+                  queries: deepPlanQueries,
+                  sources: planSources,
+                  status: 'awaiting_approval' as const,
+                },
+              };
+            }),
+          );
+          continue;
+        }
+        if (ev.type === 'research_plan') {
+          setMessages((ms) =>
+            ms.map((x) =>
+              x.id === pendingId
+                ? {
+                    ...x,
+                    researchPlan: {
+                      question: ev.plan.question,
+                      objective: ev.plan.objective,
+                      queries: ev.plan.queries,
+                      lookout: ev.plan.lookout,
+                      completionCriteria: ev.plan.completion_criteria,
+                      status: 'awaiting_approval' as const,
+                    },
+                  }
+                : x,
+            ),
+          );
           continue;
         }
         if (ev.type === 'research_status') {
@@ -759,8 +830,10 @@ export function ChatPage() {
     return { conversationId: newConversationId, consentNeeded };
   }
 
-  async function send(forcedText?: string) {
-    if (researchEnabled && !forcedText) {
+  async function send(forcedText?: string, searchModeOverride?: 'deep' | 'deep_approved' | 'research' | 'research_approved') {
+    // Legacy research endpoint — only used when old researchEnabled flag is set
+    // (not the new search_mode: "research" which goes through the chat endpoint)
+    if (researchEnabled && !forcedText && !searchModeOverride) {
       return sendResearch();
     }
     const text = (forcedText ?? input).trim();
@@ -782,7 +855,20 @@ export function ChatPage() {
       responseStyle: styleKey || undefined,
       sourceUserText: text,
     };
-    setMessages((m) => [...m, userMsg, pendingMsg]);
+    setMessages((m) => {
+      // Clear any pending approval cards when a new message is sent
+      const cleared = !searchModeOverride
+        ? m.map((x) => {
+            if (!x.deepSearchPlan && !x.researchPlan) return x;
+            return {
+              ...x,
+              deepSearchPlan: x.deepSearchPlan ? { ...x.deepSearchPlan, status: 'revised' as const } : undefined,
+              researchPlan: x.researchPlan ? { ...x.researchPlan, status: 'revised' as const } : undefined,
+            };
+          })
+        : m;
+      return [...cleared, userMsg, pendingMsg];
+    });
     if (!forcedText) setInput('');
     setSending(true);
     setError(null);
@@ -798,7 +884,7 @@ export function ChatPage() {
           ...(isFirstMessage && ragEnabled ? { rag_enabled: true } : {}),
           ...(isFirstMessage && knowledgeEnabled ? { knowledge_enabled: true } : {}),
           ...(searchSuppressed ? { search_enabled: false } : alwaysAllowSearch ? { search_enabled: true } : {}),
-          ...(searchMode !== 'normal' ? { search_mode: searchMode } : {}),
+          ...((searchModeOverride ?? searchMode) !== 'normal' ? { search_mode: searchModeOverride ?? searchMode } : {}),
           ...(styleKey ? { response_style: styleKey } : {}),
         },
         pendingId,
@@ -1062,6 +1148,42 @@ export function ChatPage() {
                           }
                         : undefined
                     }
+                    onPlanApprove={(mm) => {
+                      const mode = mm.researchPlan ? 'research_approved' : 'deep_approved';
+                      setMessages((ms) =>
+                        ms.map((x) => {
+                          if (x.id !== mm.id) return x;
+                          return {
+                            ...x,
+                            deepSearchPlan: x.deepSearchPlan
+                              ? { ...x.deepSearchPlan, status: 'approved' as const }
+                              : undefined,
+                            researchPlan: x.researchPlan
+                              ? { ...x.researchPlan, status: 'approved' as const }
+                              : undefined,
+                          };
+                        }),
+                      );
+                      void send('Approved', mode);
+                    }}
+                    onPlanRevise={(mm, feedback) => {
+                      const mode = mm.researchPlan ? 'research' : 'deep';
+                      setMessages((ms) =>
+                        ms.map((x) => {
+                          if (x.id !== mm.id) return x;
+                          return {
+                            ...x,
+                            deepSearchPlan: x.deepSearchPlan
+                              ? { ...x.deepSearchPlan, status: 'revised' as const }
+                              : undefined,
+                            researchPlan: x.researchPlan
+                              ? { ...x.researchPlan, status: 'revised' as const }
+                              : undefined,
+                          };
+                        }),
+                      );
+                      void send(feedback, mode);
+                    }}
                   />
                   {m.role === 'assistant' && m.status === 'complete' && m.responseStyle && (
                     <div className="flex justify-start">
@@ -1200,18 +1322,18 @@ export function ChatPage() {
                 onToggle: () => setKnowledgeEnabled((v) => !v),
               },
               {
-                key: 'research',
-                label: 'Research',
-                active: researchEnabled,
-                title: 'Run a multi-step research workflow instead of a normal chat reply',
-                onToggle: () => setResearchEnabled((v) => !v),
-              },
-              {
                 key: 'deep',
                 label: 'Deep Search',
                 active: searchMode === 'deep',
                 title: 'Search + model summarisation + reranking (slower, higher quality)',
                 onToggle: () => setSearchMode((m) => m === 'deep' ? 'normal' : 'deep'),
+              },
+              {
+                key: 'research',
+                label: 'Research',
+                active: searchMode === 'research',
+                title: 'Iterative multi-round research with plan approval (slower, comprehensive)',
+                onToggle: () => setSearchMode((m) => m === 'research' ? 'normal' : 'research'),
               },
             ] satisfies ComposerToggle[]
           }

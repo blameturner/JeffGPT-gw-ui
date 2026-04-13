@@ -68,6 +68,7 @@ export function ChatPage() {
   const [researchEnabled, setResearchEnabled] = useState(false);
   const [searchMode, setSearchMode] = useState<'normal' | 'deep'>('normal');
   const [searchSuppressed, setSearchSuppressed] = useState(false);
+  const [conversationTopics, setConversationTopics] = useState<string[]>([]);
   const streamAbortRef = useRef<AbortController | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -350,8 +351,24 @@ export function ChatPage() {
   }, [hasWaitingDeepSearch, activeId]);
 
   function hydrateMessages(msgs: ChatMessageRow[]): DisplayMessage[] {
+    // Extract topics from the latest [Conversation summary] message
+    const summaryMsg = [...msgs].reverse().find(
+      (m) => m.role === 'system' && m.content.startsWith('[Conversation summary]'),
+    );
+    if (summaryMsg) {
+      const topicsMatch = summaryMsg.content.match(/TOPICS:\s*(.+)/);
+      if (topicsMatch) {
+        setConversationTopics(topicsMatch[1].split(',').map((t) => t.trim()).filter(Boolean));
+      }
+    }
+
     return msgs
-      .filter((m) => m.role !== 'system' || m.content.startsWith('[Deep search result]'))
+      .filter((m) => {
+        if (m.role !== 'system') return true;
+        if (m.content.startsWith('[Deep search result]')) return true;
+        // Hide conversation summaries from chat view
+        return false;
+      })
       .map<DisplayMessage>((m) => ({
         id: String(m.Id),
         role: m.role as 'user' | 'assistant' | 'system',
@@ -375,6 +392,7 @@ export function ChatPage() {
     setError(null);
     setStats(null);
     setConsentRequest(null);
+    setConversationTopics([]);
     setRenameTitle(c.title || '');
     try {
       const saved = window.localStorage.getItem(`chatStyle:${c.Id}`);
@@ -421,6 +439,7 @@ export function ChatPage() {
     setRagEnabled(false);
     setKnowledgeEnabled(false);
     setConsentRequest(null);
+    setConversationTopics([]);
   }
 
   async function runChatStream(
@@ -461,6 +480,20 @@ export function ChatPage() {
 
     try {
       for await (const ev of stream) {
+        if (ev.type === 'status') {
+          if (ev.phase === 'summarising_previous') {
+            flushSync(() => {
+              setMessages((ms) =>
+                ms.map((x) =>
+                  x.id === pendingId
+                    ? { ...x, toolStatus: ev.message || 'Preparing context...' }
+                    : x,
+                ),
+              );
+            });
+          }
+          continue;
+        }
         if (ev.type === 'intent_classified') {
           setMessages((ms) =>
             ms.map((x) => (x.id === pendingId ? { ...x, intent: ev.intent } : x)),
@@ -569,11 +602,16 @@ export function ChatPage() {
             ),
           );
         } else if (ev.type === 'summarised') {
+          if (ev.topics?.length) {
+            setConversationTopics(ev.topics);
+          }
           const notice: DisplayMessage = {
             id: uid(),
             role: 'system',
             status: 'system',
-            content: `Trimmed ${ev.removed} earlier message${ev.removed === 1 ? '' : 's'} (≈${ev.summary_chars.toLocaleString()} chars summarised)`,
+            content: ev.fallback
+              ? `Trimmed ${ev.removed} earlier message${ev.removed === 1 ? '' : 's'} (truncation only)`
+              : `Trimmed ${ev.removed} earlier message${ev.removed === 1 ? '' : 's'} (≈${ev.summary_chars.toLocaleString()} chars summarised)`,
           };
           setMessages((ms) => {
             const idx = ms.findIndex((x) => x.id === pendingId);
@@ -922,6 +960,15 @@ export function ChatPage() {
             <h2 className="font-display text-base sm:text-lg md:text-xl font-semibold truncate tracking-tightest">
               {activeConversation?.title || 'Untitled'}
             </h2>
+            {conversationTopics.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {conversationTopics.slice(0, 8).map((t) => (
+                  <span key={t} className="text-[9px] font-sans px-1.5 py-0.5 rounded-full border border-border text-muted bg-panel/40">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
             <IconButton

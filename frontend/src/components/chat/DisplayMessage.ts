@@ -29,4 +29,5 @@ export interface DisplayMessage {
   isThinking?: boolean;
   deepSearchStatus?: 'waiting' | 'done';
   deepSearchMessage?: string;
+  topics?: string[];
 }

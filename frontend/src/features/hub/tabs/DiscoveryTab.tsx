@@ -17,7 +17,7 @@ export function DiscoveryTab() {
   function loadItems() {
     setLoading(true);
     listDiscovery({ limit: 100 })
-      .then((res) => setItems(res.items))
+      .then((res) => setItems(res?.items ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }

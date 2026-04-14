@@ -47,7 +47,7 @@ export function ResearchTab() {
   function loadPlans() {
     setLoading(true);
     listResearchPlans()
-      .then((res) => setPlans(res.items))
+      .then((res) => setPlans(res?.items ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }

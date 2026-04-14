@@ -18,7 +18,9 @@ export function getNextResearchPlan() {
 }
 
 export function completeResearchPlan(planId: number) {
-  return http.post('api/enrichment/research/complete', { json: { plan_id: planId } });
+  return http.post('api/enrichment/research/complete', {
+    searchParams: { plan_id: planId },
+  });
 }
 
 export function runResearchAgent(payload: AgentRunRequest) {

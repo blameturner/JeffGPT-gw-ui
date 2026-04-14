@@ -24,10 +24,11 @@ export function ScraperTab() {
     setLoading(true);
     listDiscovery({ status: 'scraped', limit: 100 })
       .then((res) => {
-        setScrapedItems(res.items);
+        const items = res?.items ?? [];
+        setScrapedItems(items);
         setStats({
-          totalScraped: res.items.length,
-          chunksStored: res.items.length * 5,
+          totalScraped: items.length,
+          chunksStored: items.length * 5,
         });
       })
       .catch(() => {})

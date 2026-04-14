@@ -15,7 +15,9 @@ export function fetchNextUrl() {
 }
 
 export function markUrlProcessed(urlId: number) {
-  return http.post('api/enrichment/pathfinder/mark-processed', { json: { url_id: urlId } });
+  return http.post('api/enrichment/pathfinder/mark-processed', {
+    searchParams: { url_id: urlId },
+  });
 }
 
 export function listDiscovery(params?: { status?: string; limit?: number }) {

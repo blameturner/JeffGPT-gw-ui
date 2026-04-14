@@ -40,6 +40,7 @@ export function ChatPage() {
     styleKey: config.styleKey,
     searchSuppressed: config.searchSuppressed,
     alwaysAllowSearch: config.alwaysAllowSearch,
+    planSearch: config.planSearch,
     ragEnabled: config.ragEnabled,
     knowledgeEnabled: config.knowledgeEnabled,
     setActiveId: convs.setActiveId,

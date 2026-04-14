@@ -23,6 +23,9 @@ export interface ChatConfig {
   searchSuppressed: boolean;
   setSearchSuppressed: (fn: (v: boolean) => boolean) => void;
 
+  planSearch: boolean;
+  setPlanSearch: (fn: (v: boolean) => boolean) => void;
+
   alwaysAllowSearch: boolean;
   setAlwaysAllowSearch: (fn: (v: boolean) => boolean) => void;
 
@@ -43,6 +46,7 @@ export function useChatConfig(): ChatConfig {
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
 
   const [searchSuppressed, setSearchSuppressed] = useState(false);
+  const [planSearch, setPlanSearch] = useState(false);
 
   const [alwaysAllowSearch, setAlwaysAllowSearch] = useState(true);
   const [grounding, setGrounding] = useState(true);
@@ -71,6 +75,14 @@ export function useChatConfig(): ChatConfig {
             : 'Extract entities and write concept edges to the knowledge graph',
         onToggle: () => setKnowledgeEnabled((v) => !v),
       },
+      {
+        key: 'plan_search',
+        label: 'Plan Search',
+        active: planSearch,
+        title:
+          'Propose a set of web searches before answering — requires approval before queries run',
+        onToggle: () => setPlanSearch((v) => !v),
+      },
     ];
   }
 
@@ -79,6 +91,7 @@ export function useChatConfig(): ChatConfig {
     chatStyles, setChatStyles, styleKey, setStyleKey,
     ragEnabled, setRagEnabled, knowledgeEnabled, setKnowledgeEnabled,
     searchSuppressed, setSearchSuppressed,
+    planSearch, setPlanSearch,
     alwaysAllowSearch, setAlwaysAllowSearch,
     grounding, setGrounding,
     buildToggles,

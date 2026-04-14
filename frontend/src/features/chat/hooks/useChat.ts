@@ -20,6 +20,7 @@ interface UseChatDeps {
   styleKey: string;
   searchSuppressed: boolean;
   alwaysAllowSearch: boolean;
+  planSearch: boolean;
   ragEnabled: boolean;
   knowledgeEnabled: boolean;
   setActiveId: (id: number | null) => void;
@@ -396,6 +397,7 @@ export function useChat(deps: UseChatDeps): ChatState {
           ...(isFirstMessage && deps.ragEnabled ? { rag_enabled: true } : {}),
           ...(isFirstMessage && deps.knowledgeEnabled ? { knowledge_enabled: true } : {}),
           ...(deps.searchSuppressed ? { search_enabled: false } : deps.alwaysAllowSearch ? { search_enabled: true } : {}),
+          ...(deps.planSearch ? { plan_search: true } : {}),
           ...(deps.styleKey ? { response_style: deps.styleKey } : {}),
         },
         pendingId,

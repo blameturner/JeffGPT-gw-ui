@@ -12,7 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as HarnessRouteImport } from './routes/harness'
+import { Route as HubRouteImport } from './routes/hub'
 import { Route as CodeRouteImport } from './routes/code'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ArchitectureRouteImport } from './routes/architecture'
@@ -38,9 +38,9 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const HarnessRoute = HarnessRouteImport.update({
-  id: '/harness',
-  path: '/harness',
+const HubRoute = HubRouteImport.update({
+  id: '/hub',
+  path: '/hub',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CodeRoute = CodeRouteImport.update({
@@ -95,7 +95,7 @@ export interface FileRoutesByFullPath {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/harness': typeof HarnessRoute
+  '/hub': typeof HubRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
@@ -110,7 +110,7 @@ export interface FileRoutesByTo {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/harness': typeof HarnessRoute
+  '/hub': typeof HubRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
@@ -126,7 +126,7 @@ export interface FileRoutesById {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/harness': typeof HarnessRoute
+  '/hub': typeof HubRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
@@ -143,7 +143,7 @@ export interface FileRouteTypes {
     | '/architecture'
     | '/chat'
     | '/code'
-    | '/harness'
+    | '/hub'
     | '/login'
     | '/logs'
     | '/setup'
@@ -158,7 +158,7 @@ export interface FileRouteTypes {
     | '/architecture'
     | '/chat'
     | '/code'
-    | '/harness'
+    | '/hub'
     | '/login'
     | '/logs'
     | '/setup'
@@ -173,7 +173,7 @@ export interface FileRouteTypes {
     | '/architecture'
     | '/chat'
     | '/code'
-    | '/harness'
+    | '/hub'
     | '/login'
     | '/logs'
     | '/setup'
@@ -189,7 +189,7 @@ export interface RootRouteChildren {
   ArchitectureRoute: typeof ArchitectureRoute
   ChatRoute: typeof ChatRoute
   CodeRoute: typeof CodeRoute
-  HarnessRoute: typeof HarnessRoute
+  HubRoute: typeof HubRoute
   LoginRoute: typeof LoginRoute
   LogsRoute: typeof LogsRoute
   SetupRoute: typeof SetupRoute
@@ -218,11 +218,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/harness': {
-      id: '/harness'
-      path: '/harness'
-      fullPath: '/harness'
-      preLoaderRoute: typeof HarnessRouteImport
+    '/hub': {
+      id: '/hub'
+      path: '/hub'
+      fullPath: '/hub'
+      preLoaderRoute: typeof HubRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/code': {
@@ -324,7 +324,7 @@ const rootRouteChildren: RootRouteChildren = {
   ArchitectureRoute: ArchitectureRoute,
   ChatRoute: ChatRoute,
   CodeRoute: CodeRoute,
-  HarnessRoute: HarnessRoute,
+  HubRoute: HubRoute,
   LoginRoute: LoginRoute,
   LogsRoute: LogsRoute,
   SetupRoute: SetupRoute,

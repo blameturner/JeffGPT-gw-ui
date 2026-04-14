@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
 import { health as fetchHealth } from '../../api/health/health';
 import { LogsPage } from '../logs/LogsPage';
-import { ArchitectureTab } from './tabs/ArchitectureTab';
 import { StatsTab } from './tabs/StatsTab';
 import { QueueTab } from './tabs/QueueTab';
 import { DiscoveryTab } from './tabs/DiscoveryTab';
 import { ScraperTab } from './tabs/ScraperTab';
 import { ResearchTab } from './tabs/ResearchTab';
-import type { HarnessTab } from './types/HarnessTab';
+import { HomeTab } from './tabs/HomeTab';
+import type { HubTab } from './types/HubTab';
 import type { HealthStatus } from './types/HealthStatus';
 
-export function HarnessPage() {
-  const [tab, setTab] = useState<HarnessTab>('architecture');
+export function HubPage() {
+  const [tab, setTab] = useState<HubTab>('home');
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -22,10 +22,10 @@ export function HarnessPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const harnessOk = health?.harness === 'ok';
+  const hubOk = health?.harness === 'ok';
 
-  const tabs: { id: HarnessTab; label: string }[] = [
-    { id: 'architecture', label: 'Architecture' },
+  const tabs: { id: HubTab; label: string }[] = [
+    { id: 'home', label: 'Home' },
     { id: 'logs', label: 'Logs' },
     { id: 'stats', label: 'Stats' },
     { id: 'queue', label: 'Queue' },
@@ -37,18 +37,18 @@ export function HarnessPage() {
   return (
     <div className="h-full flex flex-col bg-bg text-fg font-sans">
       <header className="shrink-0 border-b border-border px-8 py-4 flex items-center justify-between">
-        <h1 className="font-display text-2xl tracking-tightest">Harness</h1>
+        <h1 className="font-display text-2xl tracking-tightest">Hub</h1>
         <div className="flex items-center gap-3">
           <span
-            className={`inline-block w-2 h-2 rounded-full ${harnessOk ? 'bg-fg' : health ? 'bg-muted' : 'bg-border animate-blink'}`}
+            className={`inline-block w-2 h-2 rounded-full ${hubOk ? 'bg-fg' : health ? 'bg-muted' : 'bg-border animate-blink'}`}
           />
           <span className="text-[11px] uppercase tracking-[0.14em] text-muted">
             {loading
               ? 'Checking'
-              : harnessOk
+              : hubOk
                 ? 'All connected'
                 : health
-                  ? 'Harness unreachable'
+                  ? 'Hub unreachable'
                   : 'Gateway unreachable'}
           </span>
         </div>
@@ -70,7 +70,7 @@ export function HarnessPage() {
       </nav>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {tab === 'architecture' && <ArchitectureTab />}
+        {tab === 'home' && <HomeTab />}
         {tab === 'logs' && <LogsPage />}
         {tab === 'stats' && <StatsTab />}
         {tab === 'queue' && <QueueTab />}

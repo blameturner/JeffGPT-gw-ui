@@ -59,15 +59,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="flex items-center gap-4">
           <Link
-            to="/harness"
+            to="/hub"
             className={[
               'px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap',
-              pathname === '/harness' || pathname.startsWith('/harness/')
+              pathname === '/hub' || pathname.startsWith('/hub/')
                 ? 'bg-fg text-bg'
                 : 'text-muted hover:text-fg hover:bg-panelHi',
             ].join(' ')}
           >
-            Harness
+            Hub
           </Link>
           <button
             onClick={() => void logout()}

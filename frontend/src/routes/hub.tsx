@@ -1,11 +1,11 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { authClient } from '../lib/auth-client';
-import { HarnessPage } from '../features/harness/HarnessPage';
+import { HubPage } from '../features/hub/HubPage';
 
-export const Route = createFileRoute('/harness')({
+export const Route = createFileRoute('/hub')({
   beforeLoad: async () => {
     const session = await authClient.getSession();
     if (!session.data?.user) throw redirect({ to: '/login' });
   },
-  component: HarnessPage,
+  component: HubPage,
 });

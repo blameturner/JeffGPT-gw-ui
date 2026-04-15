@@ -22,6 +22,7 @@ import { Route as AgentsNewRouteImport } from './routes/agents.new'
 import { Route as AgentsIdRouteImport } from './routes/agents.$id'
 import { Route as AgentsEditIdRouteImport } from './routes/agents.edit.$id'
 import { Route as AgentsIdRunsRunIdRouteImport } from './routes/agents.$id.runs.$runId'
+import { Route as HubResearchIdRouteImport } from './routes/hub.research.$id'
 
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
@@ -88,6 +89,11 @@ const AgentsIdRunsRunIdRoute = AgentsIdRunsRunIdRouteImport.update({
   path: '/runs/$runId',
   getParentRoute: () => AgentsIdRoute,
 } as any)
+const HubResearchIdRoute = HubResearchIdRouteImport.update({
+  id: '/hub/research/$id',
+  path: '/hub/research/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/agents/new': typeof AgentsNewRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
+  '/hub/research/$id': typeof HubResearchIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -118,6 +125,7 @@ export interface FileRoutesByTo {
   '/agents/new': typeof AgentsNewRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
+  '/hub/research/$id': typeof HubResearchIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/agents/new': typeof AgentsNewRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
+  '/hub/research/$id': typeof HubResearchIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -151,6 +160,7 @@ export interface FileRouteTypes {
     | '/agents/new'
     | '/agents/edit/$id'
     | '/agents/$id/runs/$runId'
+    | '/hub/research/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/agents/new'
     | '/agents/edit/$id'
     | '/agents/$id/runs/$runId'
+    | '/hub/research/$id'
   id:
     | '__root__'
     | '/'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/agents/new'
     | '/agents/edit/$id'
     | '/agents/$id/runs/$runId'
+    | '/hub/research/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -190,6 +202,7 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRoute
   CodeRoute: typeof CodeRoute
   HubRoute: typeof HubRoute
+  HubResearchIdRoute: typeof HubResearchIdRoute
   LoginRoute: typeof LoginRoute
   LogsRoute: typeof LogsRoute
   SetupRoute: typeof SetupRoute
@@ -288,6 +301,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIdRunsRunIdRouteImport
       parentRoute: typeof AgentsIdRoute
     }
+    '/hub/research/$id': {
+      id: '/hub/research/$id'
+      path: '/hub/research/$id'
+      fullPath: '/hub/research/$id'
+      preLoaderRoute: typeof HubResearchIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -325,6 +345,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRoute,
   CodeRoute: CodeRoute,
   HubRoute: HubRoute,
+  HubResearchIdRoute: HubResearchIdRoute,
   LoginRoute: LoginRoute,
   LogsRoute: LogsRoute,
   SetupRoute: SetupRoute,

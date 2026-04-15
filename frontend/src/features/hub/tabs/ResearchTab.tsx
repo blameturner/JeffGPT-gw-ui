@@ -10,7 +10,6 @@ import {
 } from '../../../api/enrichment/research';
 import type { ResearchPlan } from '../../../api/types/Enrichment';
 import { ResearchPlanCard } from './research/ResearchPlanCard';
-import { PaperViewer } from './research/PaperViewer';
 
 type StatusFilter = 'all' | 'active' | 'complete' | 'failed';
 
@@ -22,7 +21,6 @@ export function ResearchTab() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
-  const [paperPlan, setPaperPlan] = useState<ResearchPlan | null>(null);
   const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -186,19 +184,10 @@ export function ResearchTab() {
               onSaveQueries={(id, queries) =>
                 withAction(`save:${id}`, () => updateResearchPlanQueries(id, queries))
               }
-              onViewPaper={(p) => setPaperPlan(p)}
             />
           ))
         )}
       </div>
-
-      {paperPlan?.paper_content && (
-        <PaperViewer
-          topic={paperPlan.topic}
-          content={paperPlan.paper_content}
-          onClose={() => setPaperPlan(null)}
-        />
-      )}
     </div>
   );
 }

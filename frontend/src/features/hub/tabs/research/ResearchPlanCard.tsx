@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import type { ResearchPlan } from '../../../../api/types/Enrichment';
 import { ConfidenceMeter } from './ConfidenceMeter';
 import { GapReportPanel } from './GapReportPanel';
@@ -10,7 +11,6 @@ interface Props {
   onRunAgent: (id: number) => void;
   onComplete: (id: number) => void;
   onDelete: (id: number) => void;
-  onViewPaper: (plan: ResearchPlan) => void;
   onSaveQueries: (id: number, queries: string[]) => void;
 }
 
@@ -20,7 +20,6 @@ export function ResearchPlanCard({
   onRunAgent,
   onComplete,
   onDelete,
-  onViewPaper,
   onSaveQueries,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
@@ -73,14 +72,24 @@ export function ResearchPlanCard({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => onViewPaper(plan)}
-              disabled={!hasPaper}
-              className="px-3 py-1 rounded border border-border text-[10px] uppercase tracking-[0.14em] hover:bg-panel disabled:opacity-40 disabled:cursor-not-allowed"
-              title={hasPaper ? 'View paper' : 'No paper yet'}
-            >
-              View Paper
-            </button>
+            {hasPaper ? (
+              <Link
+                to="/hub/research/$id"
+                params={{ id: String(plan.Id) }}
+                className="px-3 py-1 rounded border border-border text-[10px] uppercase tracking-[0.14em] hover:bg-panel"
+                title="View paper"
+              >
+                View Paper
+              </Link>
+            ) : (
+              <button
+                disabled
+                className="px-3 py-1 rounded border border-border text-[10px] uppercase tracking-[0.14em] opacity-40 cursor-not-allowed"
+                title="No paper yet"
+              >
+                View Paper
+              </button>
+            )}
             <button
               onClick={() => onRunAgent(plan.Id)}
               disabled={isBusy || isComplete}

@@ -6,5 +6,5 @@ export function runStream(
   body: RunStreamRequest,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent, void, void> {
-  return streamJob('api/run/stream', body, signal);
+  return streamJob('run/stream', body, signal);
 }

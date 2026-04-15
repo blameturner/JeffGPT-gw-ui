@@ -3,6 +3,6 @@ import type { PlannedSearchStatusResponse } from './types';
 
 export function getPlannedSearch(messageId: number) {
   return http
-    .get(`api/planned_search/${messageId}`)
+    .get(`planned_search/${messageId}`)
     .json<PlannedSearchStatusResponse>();
 }

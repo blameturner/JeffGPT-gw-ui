@@ -6,5 +6,5 @@ export function chatStream(
   body: ChatStreamRequest,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent, void, void> {
-  return streamJob('api/chat', body, signal);
+  return streamJob('chat', body, signal);
 }

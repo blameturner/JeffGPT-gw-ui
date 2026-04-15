@@ -3,7 +3,7 @@ import type { PlannedSearchApproveResponse } from './types';
 
 export function approvePlannedSearch(messageId: number, orgId: number) {
   return http
-    .post(`api/planned_search/${messageId}/approve`, {
+    .post(`planned_search/${messageId}/approve`, {
       json: { org_id: orgId },
       timeout: 180_000,
     })

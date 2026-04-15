@@ -7,5 +7,5 @@ export function listQueueJobs(params?: { type?: string; status?: string; limit?:
   if (params?.status) sp.set('status', params.status);
   if (params?.limit) sp.set('limit', String(params.limit));
   const qs = sp.toString();
-  return http.get(`api/tool-queue/jobs${qs ? `?${qs}` : ''}`).json<{ jobs: QueueJob[] }>();
+  return http.get(`tool-queue/jobs${qs ? `?${qs}` : ''}`).json<{ jobs: QueueJob[] }>();
 }

@@ -3,6 +3,6 @@ import type { PlannedSearchRejectResponse } from './types';
 
 export function rejectPlannedSearch(messageId: number) {
   return http
-    .post(`api/planned_search/${messageId}/reject`)
+    .post(`planned_search/${messageId}/reject`)
     .json<PlannedSearchRejectResponse>();
 }

@@ -7,15 +7,15 @@ export interface DiscoverRequest {
 }
 
 export function discover(payload: DiscoverRequest) {
-  return http.post('api/enrichment/pathfinder/discover', { json: payload });
+  return http.post('enrichment/pathfinder/discover', { json: payload });
 }
 
 export function fetchNextUrl() {
-  return http.post('api/enrichment/pathfinder/fetch-next');
+  return http.post('enrichment/pathfinder/fetch-next');
 }
 
 export function markUrlProcessed(urlId: number) {
-  return http.post('api/enrichment/pathfinder/mark-processed', {
+  return http.post('enrichment/pathfinder/mark-processed', {
     searchParams: { url_id: urlId },
   });
 }
@@ -24,5 +24,5 @@ export function listDiscovery(params?: { status?: string; limit?: number }) {
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set('status', params.status);
   if (params?.limit) searchParams.set('limit', String(params.limit));
-  return http.get(`api/enrichment/discovery/list?${searchParams}`).json<DiscoveryListResponse>();
+  return http.get(`enrichment/discovery/list?${searchParams}`).json<DiscoveryListResponse>();
 }

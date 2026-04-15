@@ -3,6 +3,6 @@ import type { HarnessStats } from '../types/HarnessStats';
 
 export function getHarnessStats(period: '7d' | '30d' | 'all' = '7d') {
   return http
-    .get('api/stats/usage', { searchParams: { period } })
+    .get('stats/usage', { searchParams: { period } })
     .json<HarnessStats>();
 }

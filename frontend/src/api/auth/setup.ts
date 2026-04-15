@@ -7,5 +7,5 @@ export function setup(body: {
   password: string;
   displayName: string;
 }) {
-  return http.post('api/setup', { json: body }).json<{ success: boolean }>();
+  return http.post('setup', { json: body }).json<{ success: boolean }>();
 }

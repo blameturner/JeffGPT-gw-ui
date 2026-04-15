@@ -10,6 +10,6 @@ export interface ChatStreamRequest {
   knowledge_enabled?: boolean;
   search_enabled?: boolean;
   search_consent_declined?: boolean;
-  plan_search?: boolean;
+  search_mode?: 'normal' | 'planned' | 'deep' | 'deep_search' | 'planned_search';
   response_style?: string;
 }

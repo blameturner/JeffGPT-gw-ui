@@ -470,7 +470,7 @@ export function useChat(deps: UseChatDeps): ChatState {
           ...(isFirstMessage && deps.ragEnabled ? { rag_enabled: true } : {}),
           ...(isFirstMessage && deps.knowledgeEnabled ? { knowledge_enabled: true } : {}),
           ...(deps.searchSuppressed ? { search_enabled: false } : deps.alwaysAllowSearch ? { search_enabled: true } : {}),
-          ...(deps.planSearch ? { plan_search: true } : {}),
+          ...(deps.planSearch ? { search_mode: 'planned' as const } : {}),
           ...(deps.styleKey ? { response_style: deps.styleKey } : {}),
         },
         pendingId,

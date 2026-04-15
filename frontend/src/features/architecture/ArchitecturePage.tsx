@@ -238,7 +238,7 @@ export function ArchitecturePage() {
               <EndpointRow path="/api/health" method="GET" purpose="Gateway + harness connectivity check" />
               <EndpointRow path="/api/models" method="GET" purpose="List available LLM models" />
               <EndpointRow path="/api/chat" method="POST" purpose="Start a chat stream job" />
-              <EndpointRow path="/api/code" method="POST" purpose="Start a code stream job (plan / execute / debug)" />
+              <EndpointRow path="/api/code" method="POST" purpose="Start a code stream job (plan / execute / explain / review)" />
               <EndpointRow path="/api/run/stream" method="POST" purpose="Start an agent run with streaming output" />
               <EndpointRow path="/api/stream/{id}" method="GET" purpose="SSE relay — proxies events from harness" />
               <EndpointRow path="/api/conversations" method="GET" purpose="List chat conversations" />

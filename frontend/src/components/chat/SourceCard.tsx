@@ -11,7 +11,8 @@ export function SourceCard({ source }: { source: SearchSource }) {
     dimmed ? ' opacity-60' : ''
   }`;
 
-  const relClass = RELEVANCE_COLORS[source.relevance] ?? RELEVANCE_COLORS.unknown;
+  const relevance = source.relevance ?? 'unknown';
+  const relClass = RELEVANCE_COLORS[relevance] ?? RELEVANCE_COLORS.unknown;
 
   return (
     <a href={source.url} target="_blank" rel="noreferrer noopener" className={outerClass}>
@@ -28,7 +29,7 @@ export function SourceCard({ source }: { source: SearchSource }) {
           <span
             className={`text-[8px] uppercase tracking-[0.1em] font-sans px-1 py-0.5 rounded border ${relClass}`}
           >
-            {source.relevance}
+            {relevance}
           </span>
           <span className="text-[8px] uppercase tracking-[0.1em] font-sans px-1 py-0.5 rounded border border-border text-muted">
             {source.source_type.replace(/_/g, ' ')}

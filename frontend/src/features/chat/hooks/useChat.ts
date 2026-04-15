@@ -68,6 +68,63 @@ export function useChat(deps: UseChatDeps): ChatState {
   const [consentRequest, setConsentRequest] = useState<ConsentRequest | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
 
+  async function hydratePlannedSearchApproval(conversationId: number, pendingId: string) {
+    // Poll the conversation for the newly persisted proposal row; give up after ~20s.
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      try {
+        const res = await getConversationMessages(conversationId);
+        const rows = res.messages ?? [];
+        const proposal = [...rows]
+          .reverse()
+          .find(
+            (m) =>
+              m.role === 'assistant' &&
+              (m.pending_approval === 1 || m.search_status === 'awaiting_approval'),
+          );
+        if (proposal) {
+          let queries: { query: string; reason: string }[] = [];
+          try {
+            const maybeParsed = JSON.parse(proposal.content);
+            if (Array.isArray(maybeParsed)) {
+              queries = maybeParsed
+                .map((q) => {
+                  if (typeof q === 'string') return { query: q, reason: '' };
+                  if (q && typeof q === 'object') {
+                    return {
+                      query: String((q as { query?: unknown }).query ?? ''),
+                      reason: String((q as { reason?: unknown }).reason ?? ''),
+                    };
+                  }
+                  return { query: '', reason: '' };
+                })
+                .filter((q) => q.query);
+            }
+          } catch {
+            const parsedFromMarker = parseProposal(proposal.content);
+            if (parsedFromMarker) queries = parsedFromMarker.queries;
+          }
+          setMessages((ms) =>
+            ms.map((x) =>
+              x.id === pendingId
+                ? {
+                    ...x,
+                    plannedSearch: {
+                      proposalMessageId: proposal.Id,
+                      queries,
+                      status: 'proposed' as const,
+                    },
+                  }
+                : x,
+            ),
+          );
+          return;
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
   async function processStreamFn(
     stream: AsyncGenerator<StreamEvent, void, void>,
     pendingId: string,
@@ -252,6 +309,22 @@ export function useChat(deps: UseChatDeps): ChatState {
                   : x,
               ),
             );
+            break;
+          }
+          if (ev.awaiting === 'planned_search_approval') {
+            // Parallel path to search_consent: hand the pending bubble off to
+            // PlannedSearchCard once the backend-persisted proposal message is found.
+            const convIdForPoll = ev.conversation_id ?? newConversationId;
+            setMessages((ms) =>
+              ms.map((x) =>
+                x.id === pendingId
+                  ? { ...x, status: 'pending', startedAt: undefined }
+                  : x,
+              ),
+            );
+            if (convIdForPoll != null) {
+              void hydratePlannedSearchApproval(convIdForPoll, pendingId);
+            }
             break;
           }
           const tokIn = ev.usage?.prompt_tokens ?? ev.tokens_input;

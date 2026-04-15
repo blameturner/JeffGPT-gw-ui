@@ -6,7 +6,7 @@ export interface DiscoveryRow {
   source_url: string;
   depth: number;
   domain: string;
-  status: 'newly_added' | 'discovered' | 'scraping' | 'scraped' | 'processed' | 'failed';
+  status: 'discovered' | 'scraping' | 'scraped' | 'processed' | 'failed';
   error_message?: string;
 }
 
@@ -25,12 +25,60 @@ export interface ScraperNextResponse {
   error?: string;
 }
 
+/** Scrape-target row status. `null` means the target has never been scraped. */
+export type ScrapeTargetStatus = 'ok' | 'error' | 'rejected' | null;
+
+/** Full schema for a row in the backend `scrape_targets` table. */
+export interface ScrapeTargetRow {
+  Id: number;
+  org_id: number;
+  url: string;
+  name: string;
+  category:
+    | 'documentation'
+    | 'news'
+    | 'competitive'
+    | 'regulatory'
+    | 'research'
+    | 'security'
+    | 'model_releases'
+    | 'auto';
+  /** Stored as an int (0 = inactive, 1 = active). */
+  active: 0 | 1;
+  frequency_hours: number;
+  enrichment_agent_id?: number;
+  /** Self-referencing FK to parent scrape target. */
+  parent_target?: number;
+  /** NocoDB returns 0|1 on reads even though the schema is declared as Boolean. */
+  use_playwright?: 0 | 1;
+  /** sha256 of the last scraped content. */
+  content_hash?: string;
+  /** ISO timestamp. */
+  last_scraped_at?: string;
+  /** ISO timestamp. */
+  next_crawl_at?: string;
+  /** Nullable — `null` means the target has never been scraped. */
+  status?: ScrapeTargetStatus;
+  chunk_count?: number;
+  consecutive_failures?: number;
+  /** Max 500 chars. */
+  last_scrape_error?: string;
+  consecutive_unchanged?: number;
+  /** 0 = root. */
+  depth?: number;
+  /** Parent URL that led to this target being discovered. */
+  discovered_from?: string;
+  /** Same NocoDB Boolean quirk as `use_playwright`. */
+  auto_crawled?: 0 | 1;
+  /** ISO timestamp, auto-populated by NocoDB. */
+  CreatedAt: string;
+}
+
 export type ResearchStatus =
   | 'pending'
   | 'generating'
   | 'synthesizing'
   | 'critiquing'
-  | 'complete'
   | 'completed'
   | 'failed';
 

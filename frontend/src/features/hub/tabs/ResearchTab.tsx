@@ -82,7 +82,7 @@ export function ResearchTab() {
 
   const stats = useMemo(() => {
     const total = plans.length;
-    const completed = plans.filter((p) => p.status === 'complete' || p.status === 'completed').length;
+    const completed = plans.filter((p) => p.status === 'completed').length;
     const papers = plans.filter((p) => !!p.paper_content).length;
     const scores = plans.map((p) => p.confidence_score ?? 0).filter((s) => s > 0);
     const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
@@ -93,9 +93,9 @@ export function ResearchTab() {
 
   const visiblePlans = useMemo(() => {
     if (filter === 'all') return plans;
-    if (filter === 'complete') return plans.filter((p) => p.status === 'complete' || p.status === 'completed');
+    if (filter === 'complete') return plans.filter((p) => p.status === 'completed');
     if (filter === 'failed') return plans.filter((p) => p.status === 'failed');
-    return plans.filter((p) => !['complete', 'completed', 'failed'].includes(p.status));
+    return plans.filter((p) => !['completed', 'failed'].includes(p.status));
   }, [plans, filter]);
 
   return (

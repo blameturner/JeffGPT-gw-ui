@@ -19,7 +19,7 @@ export type StreamEvent =
       duration_seconds?: number;
       mode?: 'plan' | 'execute' | 'explain' | 'review';
       output?: string;
-      awaiting?: 'search_consent';
+      awaiting?: 'search_consent' | 'planned_search_approval';
       search_used?: boolean;
       search_status?: SearchStatus;
       search_confidence?: SearchConfidence;

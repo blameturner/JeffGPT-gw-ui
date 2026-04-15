@@ -3,6 +3,8 @@ import { RELEVANCE_ORDER } from './RELEVANCE_ORDER';
 
 export function sortedByRelevance(sources: SearchSource[]): SearchSource[] {
   return [...sources].sort(
-    (a, b) => (RELEVANCE_ORDER[a.relevance] ?? 3) - (RELEVANCE_ORDER[b.relevance] ?? 3),
+    (a, b) =>
+      (RELEVANCE_ORDER[a.relevance ?? 'unknown'] ?? 3) -
+      (RELEVANCE_ORDER[b.relevance ?? 'unknown'] ?? 3),
   );
 }

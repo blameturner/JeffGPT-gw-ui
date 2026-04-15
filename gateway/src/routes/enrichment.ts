@@ -62,6 +62,15 @@ enrichmentRoute.post('/pathfinder/mark-processed', async (c) => {
   }
 });
 
+enrichmentRoute.post('/pathfinder/start', async (c) => {
+  try {
+    const res = await harnessClient.post('/enrichment/pathfinder/start', {}, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
 enrichmentRoute.get('/discovery/list', async (c) => {
   const { orgId } = getAuthContext(c);
   const status = c.req.query('status');
@@ -71,6 +80,23 @@ enrichmentRoute.get('/discovery/list', async (c) => {
   if (limit) qs += `&limit=${limit}`;
   try {
     const res = await harnessClient.get(`/enrichment/discovery/list?${qs}`, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
+enrichmentRoute.get('/scrape-targets/list', async (c) => {
+  const { orgId } = getAuthContext(c);
+  const status = c.req.query('status');
+  const activeOnly = c.req.query('active_only');
+  const limit = c.req.query('limit');
+  let qs = `org_id=${orgId}`;
+  if (status) qs += `&status=${status}`;
+  if (activeOnly) qs += `&active_only=${activeOnly}`;
+  if (limit) qs += `&limit=${limit}`;
+  try {
+    const res = await harnessClient.get(`/enrichment/scrape-targets/list?${qs}`, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'enrichment');
@@ -104,6 +130,15 @@ enrichmentRoute.post('/scraper/run', async (c) => {
 enrichmentRoute.post('/scraper/scrape-next', async (c) => {
   try {
     const res = await harnessClient.post('/enrichment/scraper/scrape-next', {}, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
+enrichmentRoute.post('/scraper/start', async (c) => {
+  try {
+    const res = await harnessClient.post('/enrichment/scraper/start', {}, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'enrichment');

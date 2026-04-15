@@ -9,8 +9,17 @@ export interface AgentRunRequest {
   plan_id: number;
 }
 
+/** Response shape for the async research-plan creation endpoint. */
+export interface CreateResearchPlanResponse {
+  status: 'queued';
+  plan_id: number;
+  job_id: string;
+}
+
 export function createResearchPlan(payload: CreatePlanRequest) {
-  return http.post('api/enrichment/research/create-plan', { json: payload });
+  return http
+    .post('api/enrichment/research/create-plan', { json: payload })
+    .json<CreateResearchPlanResponse>();
 }
 
 export function getNextResearchPlan() {

@@ -29,4 +29,6 @@ export interface PlannedSearchRejectResponse {
 export interface PlannedSearchResultsResponse {
   status: 'ok';
   sources: SearchSource[];
+  search_status?: SearchStatus;
+  source_count?: number;
 }

@@ -5,6 +5,7 @@ import { StatsTab } from './tabs/StatsTab';
 import { QueueTab } from './tabs/QueueTab';
 import { DiscoveryTab } from './tabs/DiscoveryTab';
 import { ScraperTab } from './tabs/ScraperTab';
+import { ScrapeTargetsTab } from './tabs/ScrapeTargetsTab';
 import { ResearchTab } from './tabs/ResearchTab';
 import { HomeTab } from './tabs/HomeTab';
 import type { HubTab } from './types/HubTab';
@@ -31,6 +32,7 @@ export function HubPage() {
     { id: 'queue', label: 'Queue' },
     { id: 'discovery', label: 'Discovery' },
     { id: 'scraper', label: 'Scraper' },
+    { id: 'scrape-targets', label: 'Scrape Targets' },
     { id: 'research', label: 'Research' },
   ];
 
@@ -76,6 +78,7 @@ export function HubPage() {
         {tab === 'queue' && <QueueTab />}
         {tab === 'discovery' && <DiscoveryTab />}
         {tab === 'scraper' && <ScraperTab />}
+        {tab === 'scrape-targets' && <ScrapeTargetsTab />}
         {tab === 'research' && <ResearchTab />}
       </div>
     </div>

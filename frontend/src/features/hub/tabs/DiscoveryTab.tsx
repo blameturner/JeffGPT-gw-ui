@@ -1,18 +1,67 @@
-import { useEffect, useState } from 'react';
-import { discover, listDiscovery, fetchNextUrl, markUrlProcessed } from '../../../api/enrichment/pathfinder';
-import type { DiscoveryRow } from '../../../api/types/Enrichment';
+import { useEffect, useRef, useState } from 'react';
+import {
+  discover,
+  listDiscovery,
+  fetchNextUrl,
+  startPathfinder,
+} from '../../../api/enrichment/pathfinder';
+import { listScrapeTargets } from '../../../api/enrichment/scrapeTargets';
+import type { DiscoveryRow, ScrapeTargetRow } from '../../../api/types/Enrichment';
+import type { ChainKickResponse } from '../../../api/enrichment/chainKick';
+
+const POLL_INTERVAL_MS = 2500;
+const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+type TerminalStatus = 'processed' | 'failed';
+const TERMINAL: TerminalStatus[] = ['processed', 'failed'];
+
+function formatKick(r: ChainKickResponse): string {
+  switch (r.status) {
+    case 'kicked':
+      return `kicked (queued ${r.queued})`;
+    case 'already_running':
+      return `already_running (inflight ${r.inflight})`;
+    case 'disabled':
+      return 'disabled';
+    case 'no_queue':
+      return 'no_queue';
+  }
+}
 
 export function DiscoveryTab() {
   const [seedUrl, setSeedUrl] = useState('');
   const [maxDepth, setMaxDepth] = useState(3);
   const [items, setItems] = useState<DiscoveryRow[]>([]);
+  const [targets, setTargets] = useState<ScrapeTargetRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [activeDiscoveryId, setActiveDiscoveryId] = useState<number | null>(null);
+  const [queuedBanner, setQueuedBanner] = useState<string | null>(null);
+  const [pollExpired, setPollExpired] = useState(false);
+
+  const [kickBusy, setKickBusy] = useState(false);
+  const [kickStatus, setKickStatus] = useState<string | null>(null);
+
+  const pollRef = useRef<number | null>(null);
+  const pollStartRef = useRef<number | null>(null);
+
   useEffect(() => {
     loadItems();
+    loadTargets();
+    return () => {
+      stopPolling();
+    };
   }, []);
+
+  function stopPolling() {
+    if (pollRef.current != null) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    pollStartRef.current = null;
+  }
 
   function loadItems() {
     setLoading(true);
@@ -22,13 +71,52 @@ export function DiscoveryTab() {
       .finally(() => setLoading(false));
   }
 
+  function loadTargets() {
+    // Pathfinder now writes found URLs to scrape_targets, not discovery, so we poll both.
+    listScrapeTargets({ active_only: true, limit: 50 })
+      .then((res) => setTargets(res?.rows ?? []))
+      .catch(() => {});
+  }
+
+  function pollOnce() {
+    loadItems();
+    loadTargets();
+  }
+
+  function startPolling(discoveryId: number) {
+    stopPolling();
+    setPollExpired(false);
+    setActiveDiscoveryId(discoveryId);
+    pollStartRef.current = Date.now();
+    pollRef.current = window.setInterval(() => {
+      if (pollStartRef.current && Date.now() - pollStartRef.current > POLL_TIMEOUT_MS) {
+        setPollExpired(true);
+        stopPolling();
+        return;
+      }
+      pollOnce();
+    }, POLL_INTERVAL_MS);
+  }
+
+  useEffect(() => {
+    if (activeDiscoveryId == null) return;
+    const row = items.find((r) => r.Id === activeDiscoveryId);
+    if (row && TERMINAL.includes(row.status as TerminalStatus)) {
+      stopPolling();
+    }
+  }, [items, activeDiscoveryId]);
+
   async function handleStart() {
     if (!seedUrl) return;
     setStarting(true);
     setError(null);
+    setPollExpired(false);
     try {
-      await discover({ seed_url: seedUrl, max_depth: maxDepth });
+      const res = await discover({ seed_url: seedUrl, max_depth: maxDepth });
+      setQueuedBanner(`queued discovery #${res.discovery_id} (job ${res.job_id})`);
       loadItems();
+      loadTargets();
+      startPolling(res.discovery_id);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -42,6 +130,24 @@ export function DiscoveryTab() {
 
   async function handleClear() {
     setItems([]);
+    setTargets([]);
+    setQueuedBanner(null);
+    setActiveDiscoveryId(null);
+    stopPolling();
+  }
+
+  async function handleKick() {
+    setKickBusy(true);
+    setKickStatus(null);
+    try {
+      const res = await startPathfinder();
+      setKickStatus(formatKick(res));
+    } catch (err) {
+      setKickStatus(`error: ${(err as Error).message}`);
+    } finally {
+      setKickBusy(false);
+      window.setTimeout(() => setKickStatus(null), 5000);
+    }
   }
 
   const statusCounts = items.reduce(
@@ -49,11 +155,28 @@ export function DiscoveryTab() {
       acc[item.status] = (acc[item.status] || 0) + 1;
       return acc;
     },
-    {} as Record<string, number>
+    {} as Record<string, number>,
   );
+
+  const activeRow =
+    activeDiscoveryId != null ? items.find((r) => r.Id === activeDiscoveryId) : undefined;
+  const activeTerminal = !!activeRow && TERMINAL.includes(activeRow.status as TerminalStatus);
 
   return (
     <div className="p-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleKick}
+          disabled={kickBusy}
+          className="px-3 py-1.5 rounded border border-border text-[11px] uppercase tracking-[0.14em] font-sans hover:bg-panel disabled:opacity-50"
+        >
+          {kickBusy ? 'Kicking…' : 'Kick pathfinder chain'}
+        </button>
+        {kickStatus && (
+          <span className="text-[11px] uppercase tracking-[0.14em] text-muted">{kickStatus}</span>
+        )}
+      </div>
+
       <div className="flex items-end gap-4">
         <div className="flex-1">
           <label className="block text-[11px] uppercase tracking-[0.14em] text-muted mb-1.5">Seed URL</label>
@@ -99,6 +222,21 @@ export function DiscoveryTab() {
 
       {error && <p className="text-xs text-red-500">{error}</p>}
 
+      {queuedBanner && (
+        <div className="px-3 py-2 rounded border border-border bg-panel/40 text-[11px] uppercase tracking-[0.14em] text-muted flex items-center gap-3">
+          <span>{queuedBanner}</span>
+          {activeRow ? (
+            <span className="text-fg">status: {activeRow.status}</span>
+          ) : (
+            <span>status: queued</span>
+          )}
+          {activeTerminal && <span className="text-emerald-400">done</span>}
+          {pollExpired && !activeTerminal && (
+            <span className="text-amber-500">still running, refresh to check</span>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-4 text-[11px] text-muted">
         {Object.entries(statusCounts).map(([status, count]) => (
           <span key={status}>
@@ -129,7 +267,10 @@ export function DiscoveryTab() {
               </tr>
             ) : (
               items.map((item) => (
-                <tr key={item.Id} className="hover:bg-panel/30">
+                <tr
+                  key={item.Id}
+                  className={`hover:bg-panel/30 ${item.Id === activeDiscoveryId ? 'bg-panel/40' : ''}`}
+                >
                   <td className="px-4 py-2 text-fg truncate max-w-xs">{item.url}</td>
                   <td className="px-4 py-2 text-muted">{item.domain}</td>
                   <td className="px-4 py-2 text-muted">{item.depth}</td>
@@ -155,6 +296,45 @@ export function DiscoveryTab() {
           </tbody>
         </table>
       </div>
+
+      {targets.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-muted">
+            Scrape targets (live) — {targets.length}
+          </p>
+          <div className="overflow-x-auto border border-border rounded">
+            <table className="w-full text-sm font-sans">
+              <thead className="bg-panel/50 text-[10px] uppercase tracking-[0.14em] text-muted">
+                <tr>
+                  <th className="px-4 py-2 text-left">URL</th>
+                  <th className="px-4 py-2 text-left">Name</th>
+                  <th className="px-4 py-2 text-left">Category</th>
+                  <th className="px-4 py-2 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {targets.slice(0, 20).map((t) => (
+                  <tr key={t.Id} className="hover:bg-panel/30">
+                    <td className="px-4 py-2 text-fg truncate max-w-xs">
+                      <a
+                        href={t.url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="hover:underline"
+                      >
+                        {t.url}
+                      </a>
+                    </td>
+                    <td className="px-4 py-2 text-muted">{t.name}</td>
+                    <td className="px-4 py-2 text-muted">{t.category}</td>
+                    <td className="px-4 py-2 text-muted">{t.status ?? 'never'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

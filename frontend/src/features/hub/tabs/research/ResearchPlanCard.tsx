@@ -33,7 +33,7 @@ export function ResearchPlanCard({
   const iter = plan.iterations ?? 0;
   const maxIter = plan.max_iterations ?? 3;
   const hasPaper = !!plan.paper_content;
-  const isComplete = plan.status === 'complete' || plan.status === 'completed';
+  const isComplete = plan.status === 'completed';
   const isBusy = busyAction != null;
   const inFlight = ['generating', 'synthesizing', 'critiquing'].includes(plan.status);
 

@@ -98,7 +98,7 @@ export function HomeTab() {
       setResearchStats({
         pending: researchItems.filter((i) => i.status === 'pending').length,
         generating: researchItems.filter((i) => i.status === 'generating').length,
-        complete: researchItems.filter((i) => i.status === 'complete').length,
+        complete: researchItems.filter((i) => i.status === 'completed').length,
         failed: researchItems.filter((i) => i.status === 'failed').length,
       });
     } catch {

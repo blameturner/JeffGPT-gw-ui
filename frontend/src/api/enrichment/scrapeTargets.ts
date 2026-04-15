@@ -1,5 +1,6 @@
 import { http } from '../../lib/http';
 import type { ScrapeTargetRow } from '../types/Enrichment';
+import { normalizeList } from './_normalizeList';
 
 export interface ListScrapeTargetsParams {
   status?: string;
@@ -12,7 +13,9 @@ export interface ListScrapeTargetsResponse {
   rows: ScrapeTargetRow[];
 }
 
-export function listScrapeTargets(params?: ListScrapeTargetsParams) {
+export async function listScrapeTargets(
+  params?: ListScrapeTargetsParams,
+): Promise<ListScrapeTargetsResponse> {
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set('status', params.status);
   if (params?.active_only !== undefined) searchParams.set('active_only', String(params.active_only));
@@ -21,5 +24,11 @@ export function listScrapeTargets(params?: ListScrapeTargetsParams) {
   const url = qs
     ? `api/enrichment/scrape-targets/list?${qs}`
     : 'api/enrichment/scrape-targets/list';
-  return http.get(url).json<ListScrapeTargetsResponse>();
+  const raw = await http.get(url).json<unknown>();
+  const normalized = normalizeList<ScrapeTargetRow>(raw, 'scrape-targets/list');
+  const status =
+    raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).status === 'string'
+      ? ((raw as Record<string, unknown>).status as string)
+      : 'ok';
+  return { status, rows: normalized.items };
 }

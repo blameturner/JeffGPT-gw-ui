@@ -231,3 +231,17 @@ enrichmentRoute.get('/research-plans/list', async (c) => {
     return mapHarnessError(err, 'enrichment');
   }
 });
+
+enrichmentRoute.get('/research-plans/:id', async (c) => {
+  const id = c.req.param('id');
+  const { orgId } = getAuthContext(c);
+  try {
+    const res = await harnessClient.get(
+      `/enrichment/research-plans/${encodeURIComponent(id)}?org_id=${orgId}`,
+      TIMEOUT,
+    );
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});

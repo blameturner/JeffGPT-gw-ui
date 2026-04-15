@@ -1,6 +1,7 @@
 import { http } from '../../lib/http';
-import type { DiscoveryListResponse } from '../types/Enrichment';
+import type { DiscoveryListResponse, DiscoveryRow } from '../types/Enrichment';
 import type { ChainKickResponse } from './chainKick';
+import { normalizeList } from './_normalizeList';
 
 export interface DiscoverRequest {
   seed_url: string;
@@ -31,11 +32,12 @@ export function markUrlProcessed(urlId: number) {
   });
 }
 
-export function listDiscovery(params?: { status?: string; limit?: number }) {
+export async function listDiscovery(params?: { status?: string; limit?: number }): Promise<DiscoveryListResponse> {
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set('status', params.status);
   if (params?.limit) searchParams.set('limit', String(params.limit));
-  return http.get(`api/enrichment/discovery/list?${searchParams}`).json<DiscoveryListResponse>();
+  const raw = await http.get(`api/enrichment/discovery/list?${searchParams}`).json<unknown>();
+  return normalizeList<DiscoveryRow>(raw, 'discovery/list') as DiscoveryListResponse;
 }
 
 /** Alias of the shared chain-kick response used by pathfinder start. */

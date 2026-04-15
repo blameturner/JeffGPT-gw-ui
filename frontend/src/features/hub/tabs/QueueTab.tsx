@@ -8,6 +8,26 @@ import type { QueueJob } from '../../../api/types/QueueJob';
 import type { QueueEvent } from '../../../api/types/QueueEvent';
 import { gatewayUrl } from '../../../lib/runtime-env';
 
+const JOB_TYPE_LABELS: Record<string, string> = {
+  research_planner: 'Research — building plan',
+  research_agent: 'Research — iteration',
+  planned_search_execute: 'Planned search — running',
+  scrape_target: 'Enrichment — scraping',
+  summarise_page: 'Summariser — running',
+  pathfinder_crawl: 'Pathfinder — crawling',
+  graph_extract: 'Graph extract',
+};
+
+function jobLabel(job: QueueJob): string {
+  return JOB_TYPE_LABELS[job.type] ?? job.type ?? job.source ?? 'Unknown';
+}
+
+function planIdFor(job: QueueJob): number | null {
+  if (job.type !== 'research_planner' && job.type !== 'research_agent') return null;
+  const pid = job.payload?.plan_id;
+  return typeof pid === 'number' ? pid : null;
+}
+
 export function QueueTab() {
   const [status, setStatus] = useState<QueueStatus | null>(null);
   const [jobs, setJobs] = useState<QueueJob[]>([]);
@@ -158,7 +178,20 @@ export function QueueTab() {
             {jobs.map((job) => (
               <tr key={job.job_id} className="border-b border-border/50">
                 <td className="py-2.5 pr-4 text-muted font-mono text-xs">{job.job_id.slice(0, 8)}</td>
-                <td className="py-2.5 pr-4">{job.source}</td>
+                <td className="py-2.5 pr-4">
+                  <span>{jobLabel(job)}</span>
+                  {(() => {
+                    const pid = planIdFor(job);
+                    return pid != null ? (
+                      <span
+                        className="ml-2 inline-block px-1.5 py-0.5 rounded border border-border text-[10px] uppercase tracking-[0.14em] text-muted"
+                        title={`Research plan #${pid}`}
+                      >
+                        Plan #{pid}
+                      </span>
+                    ) : null;
+                  })()}
+                </td>
                 <td className="py-2.5 pr-4">
                   <span
                     className={[

@@ -12,4 +12,9 @@ export interface QueueJob {
   started_at: string;
   completed_at: string;
   depends_on: string;
+  payload?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  claimed_by?: string;
+  nocodb_id?: number | null;
+  created_at?: string;
 }

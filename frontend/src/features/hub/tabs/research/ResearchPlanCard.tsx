@@ -92,7 +92,8 @@ export function ResearchPlanCard({
               onClick={() => {
                 if (confirm(`Delete plan "${plan.topic}"?`)) onDelete(plan.Id);
               }}
-              disabled={isBusy}
+              disabled={true}
+              title="not available"
               className="px-3 py-1 rounded border border-border text-[10px] uppercase tracking-[0.14em] text-red-600 hover:bg-red-500/10 hover:border-red-500/40 disabled:opacity-40"
             >
               Delete
@@ -152,7 +153,9 @@ export function ResearchPlanCard({
                 <div className="flex gap-1">
                   <button
                     onClick={commitQueries}
-                    className="text-[10px] uppercase tracking-[0.14em] text-fg hover:underline"
+                    disabled={true}
+                    title="not available"
+                    className="text-[10px] uppercase tracking-[0.14em] text-fg hover:underline disabled:opacity-40"
                   >
                     Save
                   </button>
@@ -170,7 +173,9 @@ export function ResearchPlanCard({
               ) : (
                 <button
                   onClick={() => setEditingQueries(true)}
-                  className="text-[10px] uppercase tracking-[0.14em] text-muted hover:text-fg"
+                  disabled={true}
+                  title="not available"
+                  className="text-[10px] uppercase tracking-[0.14em] text-muted hover:text-fg disabled:opacity-40"
                 >
                   Edit
                 </button>

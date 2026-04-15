@@ -4,7 +4,10 @@ import { getAuthContext } from '../lib/auth-context.js';
 import { FetchTimeoutError } from '../lib/FetchTimeoutError.js';
 import { forwardResponse } from '../lib/forwardResponse.js';
 import { getUsageStats } from '../services/harness/index.js';
+import { harnessClient } from '../services/harness/client.js';
 import type { AuthVariables } from '../types/AuthVariables.js';
+
+const TIMEOUT = 15_000;
 
 export const harnessRoute = new Hono<{ Variables: AuthVariables }>();
 
@@ -30,6 +33,24 @@ harnessRoute.get('/stats/usage', async (c) => {
   const period = url.searchParams.get('period') ?? '7d';
   try {
     const res = await getUsageStats(Number(orgId), period);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err);
+  }
+});
+
+harnessRoute.get('/graph/snapshot', async (_c) => {
+  try {
+    const res = await harnessClient.get('/graph/snapshot', TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err);
+  }
+});
+
+harnessRoute.get('/chroma/snapshot', async (_c) => {
+  try {
+    const res = await harnessClient.get('/chroma/snapshot', TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err);

@@ -3,6 +3,6 @@ import type { CodeConversation } from '../types/CodeConversation';
 
 export function listCodeConversations() {
   return http
-    .get('code/conversations')
+    .get('api/code/conversations')
     .json<{ conversations: CodeConversation[] }>();
 }

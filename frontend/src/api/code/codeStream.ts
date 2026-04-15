@@ -6,5 +6,5 @@ export function codeStream(
   body: CodeStreamRequest,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent, void, void> {
-  return streamJob('code', body, signal);
+  return streamJob('api/code', body, signal);
 }

@@ -158,6 +158,30 @@ enrichmentRoute.post('/research/complete', async (c) => {
   }
 });
 
+enrichmentRoute.post('/research/agent/run', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const schema = z.object({ plan_id: z.number().int() });
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', details: parsed.error.errors }, 400);
+  }
+  try {
+    const res = await harnessClient.post('/enrichment/research/agent/run', parsed.data, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
+enrichmentRoute.post('/research/agent/next', async (_c) => {
+  try {
+    const res = await harnessClient.post('/enrichment/research/agent/next', {}, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
 enrichmentRoute.get('/research-plans-list', async (c) => {
   const { orgId } = getAuthContext(c);
   const status = c.req.query('status');

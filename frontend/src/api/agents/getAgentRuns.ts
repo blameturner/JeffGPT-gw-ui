@@ -3,6 +3,6 @@ import type { AgentRun } from '../types/AgentRun';
 
 export function getAgentRuns(id: number) {
   return http
-    .get(`agents/${id}/runs`)
+    .get(`api/agents/${id}/runs`)
     .json<{ runs: AgentRun[]; page: number; limit: number; total: number }>();
 }

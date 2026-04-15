@@ -2,6 +2,6 @@ import { http } from '../../lib/http';
 
 export function listWorkerTypes() {
   return http
-    .get('workers/types')
+    .get('api/workers/types')
     .json<{ types: { id: string; name: string; description: string }[] }>();
 }

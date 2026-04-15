@@ -5,9 +5,9 @@ export interface ScraperRunRequest {
 }
 
 export function runScraper(payload?: ScraperRunRequest) {
-  return http.post('enrichment/scraper/run', { json: payload ?? {} });
+  return http.post('api/enrichment/scraper/run', { json: payload ?? {} });
 }
 
 export function scrapeNext() {
-  return http.post('enrichment/scraper/scrape-next');
+  return http.post('api/enrichment/scraper/scrape-next');
 }

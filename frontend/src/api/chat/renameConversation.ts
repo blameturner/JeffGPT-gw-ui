@@ -3,6 +3,6 @@ import type { Conversation } from '../types/Conversation';
 
 export function renameConversation(conversationId: number, title: string) {
   return http
-    .patch(`conversations/${conversationId}`, { json: { title } })
+    .patch(`api/conversations/${conversationId}`, { json: { title } })
     .json<{ conversation: Conversation }>();
 }

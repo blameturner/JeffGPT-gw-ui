@@ -3,6 +3,6 @@ import type { ConversationSummary } from '../types/ConversationSummary';
 
 export function getConversationSummary(conversationId: number) {
   return http
-    .get(`conversations/${conversationId}/summary`)
+    .get(`api/conversations/${conversationId}/summary`)
     .json<ConversationSummary>();
 }

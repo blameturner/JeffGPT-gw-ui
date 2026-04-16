@@ -77,7 +77,9 @@ export function hydrateMessages(msgs: ChatMessageRow[]): HydrationResult {
       const parsed = parseProposal(m.content);
       if (parsed) {
         const plannedSearch: PlannedSearchState = {
-          proposalMessageId: parsed.messageId,
+          // For the new raw-JSON format parseProposal returns messageId=0 because
+          // there is no embedded id; fall back to the DB row id directly.
+          proposalMessageId: parsed.messageId || m.Id,
           queries: parsed.queries,
           status: cardStatusFor(m.pending_approval, m.search_status),
           answerMessageId: answerByProposal.get(m.Id),

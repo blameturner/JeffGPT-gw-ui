@@ -350,7 +350,9 @@ export function useChat(deps: UseChatDeps): ChatState {
             ms.map((x) => {
               if (x.id !== pendingId) return x;
               const parsed = parseProposal(x.content);
-              if (!parsed) return x;
+              // If messageId is 0 (raw JSON format) we don't know the DB id yet —
+              // hydratePlannedSearchApproval will set plannedSearch once the row is found.
+              if (!parsed || parsed.messageId === 0) return x;
               return {
                 ...x,
                 plannedSearch: {

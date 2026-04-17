@@ -16,6 +16,8 @@ export interface SchedulerEntry {
 
 export interface OpsDashboardResponse {
   status: string;
+  error?: string;
+  message?: string;
   org_id: number;
   queue?: QueueStatus;
   runtime?: {

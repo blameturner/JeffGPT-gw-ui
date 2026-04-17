@@ -5,6 +5,7 @@ import { startScraper } from '../../../api/enrichment/scraper';
 import { startDiscoverAgent } from '../../../api/enrichment/startDiscoverAgent';
 import type { ChainKickResponse } from '../../../api/enrichment/chainKick';
 import { getOpsDashboard } from '../../../api/ops/getOpsDashboard';
+import { getQueueRuntime } from '../../../api/queue/getQueueRuntime';
 import { getQueueJob } from '../../../api/queue/getQueueJob';
 import { getDiscoveryRow } from '../../../api/enrichment/getDiscoveryRow';
 import { getScrapeTargetRow } from '../../../api/enrichment/getScrapeTargetRow';
@@ -62,6 +63,15 @@ function safeStringify(v: unknown): string {
   }
 }
 
+function extractApiFailure(err: unknown): { message: string; errorCode?: string } {
+  const fallback = { message: (err as Error)?.message ?? 'Request failed' };
+  if (!err || typeof err !== 'object') return fallback;
+  const maybeResp = err as { response?: Response };
+  if (!(maybeResp.response instanceof Response)) return fallback;
+  const response = maybeResp.response;
+  return { message: `${response.status} ${response.statusText || 'Request failed'}` };
+}
+
 function formatKick(r: ChainKickResponse): string {
   switch (r.status) {
     case 'kicked':
@@ -72,6 +82,8 @@ function formatKick(r: ChainKickResponse): string {
       return 'disabled';
     case 'no_queue':
       return 'no_queue';
+    case 'failed':
+      return r.error ? `failed (${r.error})` : 'failed';
   }
 }
 
@@ -82,6 +94,8 @@ export function OpsTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<OpsDashboardResponse | null>(null);
+  const [runtimeFallback, setRuntimeFallback] = useState<OpsDashboardResponse['runtime'] | null>(null);
+  const [queueUnavailable, setQueueUnavailable] = useState<string | null>(null);
 
   const [kickStatus, setKickStatus] = useState<string | null>(null);
   const [kickBusy, setKickBusy] = useState(false);
@@ -104,15 +118,34 @@ export function OpsTab() {
     if (orgId == null) return;
     setLoading(true);
     setError(null);
+    setQueueUnavailable(null);
     try {
       const next = await getOpsDashboard({ org_id: orgId, limit: DASH_LIMIT });
+      if (next.status === 'failed' && next.error === 'tool_queue_unavailable') {
+        setQueueUnavailable('Tool queue is unavailable. Start or restore the Huey consumer/runtime and retry.');
+      }
       setData(next);
     } catch (err) {
-      setError((err as Error).message ?? 'Failed to load ops dashboard');
+      const parsed = extractApiFailure(err);
+      setError(parsed.message || 'Failed to load ops dashboard');
+      try {
+        const runtime = await getQueueRuntime();
+        setRuntimeFallback({
+          tool_queue_ready: runtime.tool_queue_ready,
+          huey: runtime.huey,
+        });
+        if (runtime.tool_queue_ready === false || runtime.huey?.queue_ready === false) {
+          setQueueUnavailable('Tool queue is unavailable. Verify Huey runtime and consumer are running.');
+        }
+      } catch {
+        // Secondary runtime probe is best-effort only.
+      }
     } finally {
       setLoading(false);
     }
   }, [orgId]);
+
+  const runtimeView = data?.runtime ?? runtimeFallback ?? undefined;
 
   const queueTotals = useMemo(() => {
     const entries = Object.values(data?.queue?.counts ?? {});
@@ -298,19 +331,44 @@ export function OpsTab() {
       </div>
 
       {kickStatus && <p className="text-[11px] uppercase tracking-[0.14em] text-muted">{kickStatus}</p>}
+      {queueUnavailable && (
+        <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          <span className="font-medium">Queue service health:</span> {queueUnavailable}
+        </div>
+      )}
       {error && <p className="text-xs text-red-500">{error}</p>}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card title="Tool queue ready" value={data?.runtime?.tool_queue_ready ? 'yes' : 'no'} />
-        <Card title="Huey enabled" value={data?.runtime?.huey?.enabled ? 'yes' : 'no'} />
-        <Card title="Huey consumer" value={data?.runtime?.huey?.consumer_running ? 'running' : 'stopped'} />
-        <Card title="Huey workers" value={fmt(data?.runtime?.huey?.workers)} />
+        <Card title="Tool queue ready" value={runtimeView?.tool_queue_ready ? 'yes' : 'no'} />
+        <Card title="Huey enabled" value={runtimeView?.huey?.enabled ? 'yes' : 'no'} />
+        <Card title="Huey consumer" value={runtimeView?.huey?.consumer_running ? 'running' : 'stopped'} />
+        <Card title="Huey workers" value={fmt(runtimeView?.huey?.workers)} />
         <Card title="Active jobs" value={fmt(data?.active_summary?.active)} />
         <Card title="Queued jobs" value={fmt(data?.active_summary?.queued ?? queueTotals.queued)} />
         <Card title="Running jobs" value={fmt(data?.active_summary?.running ?? queueTotals.running)} />
         <Card title="Next agent run" value={fmtWhen(data?.scheduler?.next_run)} />
         <Card title="Next enrichment run" value={fmtWhen(data?.scheduler?.next_enrichment_run)} />
       </div>
+
+      <section className="space-y-3">
+        <h3 className="font-display text-lg">Queue and Huey health</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="border border-border rounded p-3 space-y-2">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Backoff</p>
+            <p className="text-sm">state: {fmt(data?.queue?.backoff?.state)}</p>
+            <p className="text-sm">idle: {fmt(data?.queue?.backoff?.idle_seconds)}s</p>
+            <p className="text-sm">
+              thresholds p1/p2/bg: {fmt(data?.queue?.backoff?.thresholds?.priority_1)} / {fmt(data?.queue?.backoff?.thresholds?.priority_2)} / {fmt(data?.queue?.backoff?.thresholds?.background)}
+            </p>
+          </div>
+          <div className="border border-border rounded p-3 space-y-2">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Huey runtime</p>
+            <p className="text-sm">queue_ready: {fmt(runtimeView?.huey?.queue_ready)}</p>
+            <p className="text-sm">workers: {fmt(runtimeView?.huey?.workers)}</p>
+            <p className="text-sm break-all">sqlite_path: {fmt(runtimeView?.huey?.sqlite_path)}</p>
+          </div>
+        </div>
+      </section>
 
       <section className="space-y-3">
         <h3 className="font-display text-lg">Scheduler</h3>
@@ -355,6 +413,8 @@ export function OpsTab() {
                 <th className="px-3 py-2 text-left">Task</th>
                 <th className="px-3 py-2 text-left">Result</th>
                 <th className="px-3 py-2 text-left">Error</th>
+                <th className="px-3 py-2 text-left">Payload</th>
+                <th className="px-3 py-2 text-left">Result</th>
                 <th className="px-3 py-2 text-left">Started</th>
                 <th className="px-3 py-2 text-left">Completed</th>
                 <th className="px-3 py-2 text-left">Detail</th>
@@ -370,6 +430,8 @@ export function OpsTab() {
                   <td className="px-3 py-2 max-w-[18rem] truncate">{fmt(job.task)}</td>
                   <td className="px-3 py-2">{fmt(job.result_status)}</td>
                   <td className="px-3 py-2 max-w-[14rem] truncate">{fmt(job.error)}</td>
+                  <td className="px-3 py-2 max-w-[14rem] truncate">{fmt(job.payload)}</td>
+                  <td className="px-3 py-2 max-w-[14rem] truncate">{fmt(job.result)}</td>
                   <td className="px-3 py-2">{fmtWhen(job.started_at)}</td>
                   <td className="px-3 py-2">{fmtWhen(job.completed_at)}</td>
                   <td className="px-3 py-2">
@@ -385,7 +447,7 @@ export function OpsTab() {
               ))}
               {!loading && queueJobs.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-6 text-center text-muted text-xs">No jobs</td>
+                  <td colSpan={12} className="px-3 py-6 text-center text-muted text-xs">No jobs</td>
                 </tr>
               )}
             </tbody>
@@ -527,12 +589,30 @@ export function OpsTab() {
             {drawerLoading && <p className="text-sm text-muted">Loading details...</p>}
             {drawerError && <p className="text-xs text-red-500">{drawerError}</p>}
             {!drawerLoading && !drawerError && (
-              <details open>
-                <summary className="text-[11px] uppercase tracking-[0.14em] text-muted cursor-pointer">Raw JSON</summary>
-                <pre className="mt-2 p-3 rounded border border-border bg-panel/60 text-xs whitespace-pre-wrap break-words">
-                  {safeStringify(drawerData)}
-                </pre>
-              </details>
+              <>
+                {drawerKind === 'job' && drawerData && typeof drawerData === 'object' && (
+                  <>
+                    <details open>
+                      <summary className="text-[11px] uppercase tracking-[0.14em] text-muted cursor-pointer">Payload</summary>
+                      <pre className="mt-2 p-3 rounded border border-border bg-panel/60 text-xs whitespace-pre-wrap break-words">
+                        {safeStringify((drawerData as { payload?: unknown }).payload)}
+                      </pre>
+                    </details>
+                    <details open>
+                      <summary className="text-[11px] uppercase tracking-[0.14em] text-muted cursor-pointer">Result</summary>
+                      <pre className="mt-2 p-3 rounded border border-border bg-panel/60 text-xs whitespace-pre-wrap break-words">
+                        {safeStringify((drawerData as { result?: unknown }).result)}
+                      </pre>
+                    </details>
+                  </>
+                )}
+                <details open>
+                  <summary className="text-[11px] uppercase tracking-[0.14em] text-muted cursor-pointer">Raw JSON</summary>
+                  <pre className="mt-2 p-3 rounded border border-border bg-panel/60 text-xs whitespace-pre-wrap break-words">
+                    {safeStringify(drawerData)}
+                  </pre>
+                </details>
+              </>
             )}
           </div>
         </div>

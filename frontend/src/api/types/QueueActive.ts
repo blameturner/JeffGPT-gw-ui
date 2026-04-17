@@ -4,4 +4,5 @@ export interface QueueActive {
   running: number;
   conversation_id: number | null;
   source: string | null;
+  org_id?: number | null;
 }

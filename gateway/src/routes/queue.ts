@@ -36,9 +36,28 @@ queueRoute.get('/active', async (c) => {
   }
 });
 
-queueRoute.get('/status', async (c) => {
+queueRoute.get('/status', async (_c) => {
   try {
     const res = await harnessClient.get('/tool-queue/status', TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'queue');
+  }
+});
+
+queueRoute.get('/runtime', async (_c) => {
+  try {
+    const res = await harnessClient.get('/tool-queue/runtime', TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'queue');
+  }
+});
+
+queueRoute.get('/dashboard', async (c) => {
+  const qs = c.req.url.includes('?') ? `?${c.req.url.split('?')[1]}` : '';
+  try {
+    const res = await harnessClient.get(`/tool-queue/dashboard${qs}`, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'queue');

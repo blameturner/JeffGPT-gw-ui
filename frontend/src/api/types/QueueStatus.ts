@@ -12,4 +12,11 @@ export interface QueueStatus {
       background: number;
     };
   };
+  huey?: {
+    enabled?: boolean;
+    consumer_running?: boolean;
+    workers?: number;
+    sqlite_path?: string;
+    queue_ready?: boolean;
+  };
 }

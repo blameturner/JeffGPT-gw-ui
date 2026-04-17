@@ -25,6 +25,8 @@ function formatKick(r: ChainKickResponse): string {
       return 'disabled';
     case 'no_queue':
       return 'no_queue';
+    case 'failed':
+      return r.error ? `failed (${r.error})` : 'failed';
   }
 }
 

@@ -84,25 +84,8 @@ enrichmentRoute.post('/discover-agent/start', async (c) => {
   }
 });
 
-enrichmentRoute.get('/discovery/:id', async (c) => {
-  const id = c.req.param('id');
-  try {
-    const res = await harnessClient.get(`/enrichment/discovery/${encodeURIComponent(id)}`, TIMEOUT);
-    return forwardResponse(res);
-  } catch (err) {
-    return mapHarnessError(err, 'enrichment');
-  }
-});
-
-enrichmentRoute.get('/scrape-targets/:id', async (c) => {
-  const id = c.req.param('id');
-  try {
-    const res = await harnessClient.get(`/enrichment/scrape-targets/${encodeURIComponent(id)}`, TIMEOUT);
-    return forwardResponse(res);
-  } catch (err) {
-    return mapHarnessError(err, 'enrichment');
-  }
-});
+// Static routes MUST be registered before dynamic /:id routes —
+// Hono resolves the first match, so /list would be captured as id="list" otherwise.
 
 enrichmentRoute.get('/discovery/list', async (c) => {
   const { orgId } = getAuthContext(c);
@@ -146,6 +129,41 @@ enrichmentRoute.get('/scrape-targets/list', async (c) => {
   if (q) qs += `&q=${encodeURIComponent(q)}`;
   try {
     const res = await harnessClient.get(`/enrichment/scrape-targets/list?${qs}`, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
+// Dynamic detail routes — registered AFTER static /list routes.
+
+enrichmentRoute.get('/discovery/:id', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await harnessClient.get(`/enrichment/discovery/${encodeURIComponent(id)}`, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
+enrichmentRoute.get('/scrape-targets/:id', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await harnessClient.get(`/enrichment/scrape-targets/${encodeURIComponent(id)}`, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
+enrichmentRoute.get('/dashboard', async (c) => {
+  const { orgId } = getAuthContext(c);
+  const limit = c.req.query('limit');
+  let qs = `org_id=${orgId}`;
+  if (limit) qs += `&limit=${encodeURIComponent(limit)}`;
+  try {
+    const res = await harnessClient.get(`/enrichment/dashboard?${qs}`, TIMEOUT);
     return forwardResponse(res);
   } catch (err) {
     return mapHarnessError(err, 'enrichment');

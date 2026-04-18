@@ -123,6 +123,20 @@ queueRoute.post('/jobs/:id/cancel', async (c) => {
   }
 });
 
+queueRoute.post('/jobs/:id/retry', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await harnessClient.post(
+      `/tool-queue/jobs/${encodeURIComponent(id)}/retry`,
+      {},
+      TIMEOUT,
+    );
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'queue');
+  }
+});
+
 queueRoute.get('/events', async (c) => {
   const url = `${env.HARNESS_URL}/tool-queue/events`;
   try {

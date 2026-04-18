@@ -157,6 +157,20 @@ enrichmentRoute.get('/scrape-targets/:id', async (c) => {
   }
 });
 
+enrichmentRoute.post('/scrape-targets/:id/run-now', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await harnessClient.post(
+      `/enrichment/scrape-targets/${encodeURIComponent(id)}/run-now`,
+      {},
+      TIMEOUT,
+    );
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'enrichment');
+  }
+});
+
 enrichmentRoute.get('/dashboard', async (c) => {
   const { orgId } = getAuthContext(c);
   const limit = c.req.query('limit');

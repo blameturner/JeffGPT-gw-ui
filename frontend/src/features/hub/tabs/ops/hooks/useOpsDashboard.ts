@@ -31,24 +31,32 @@ export function useOpsDashboard(orgId: number | null, limit = 20): UseOpsDashboa
   const debounceRef = useRef<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const pollRef = useRef<number | null>(null);
+  const genRef = useRef(0);
+  const reconnectRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (orgId == null) return;
+    const gen = ++genRef.current;
     setLoading(true);
     setError(null);
+    setQueueUnavailable(null);
     try {
       const next = await getOpsDashboard({ org_id: orgId, limit });
+      if (gen !== genRef.current) return;
       if (next.status === 'failed' && next.error === 'tool_queue_unavailable') {
         setQueueUnavailable('Tool queue is unavailable. Start or restore the Huey consumer/runtime and retry.');
       } else {
         setQueueUnavailable(null);
+        setRuntimeFallback(null);
       }
       setData(next);
       setLastReloadedAt(Date.now());
     } catch (err) {
+      if (gen !== genRef.current) return;
       setError(extractApiFailure(err).message);
       try {
         const runtime = await getQueueRuntime();
+        if (gen !== genRef.current) return;
         setRuntimeFallback({
           tool_queue_ready: runtime.tool_queue_ready,
           huey: runtime.huey,
@@ -60,7 +68,7 @@ export function useOpsDashboard(orgId: number | null, limit = 20): UseOpsDashboa
         // Best-effort fallback.
       }
     } finally {
-      setLoading(false);
+      if (gen === genRef.current) setLoading(false);
     }
   }, [orgId, limit]);
 
@@ -76,6 +84,11 @@ export function useOpsDashboard(orgId: number | null, limit = 20): UseOpsDashboa
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Clear stale runtimeFallback when org changes
+  useEffect(() => {
+    setRuntimeFallback(null);
+  }, [orgId]);
 
   // SSE subscription
   useEffect(() => {
@@ -98,7 +111,11 @@ export function useOpsDashboard(orgId: number | null, limit = 20): UseOpsDashboa
         es.close();
         esRef.current = null;
         if (!active) return;
-        window.setTimeout(connect, 2000);
+        if (reconnectRef.current != null) window.clearTimeout(reconnectRef.current);
+        reconnectRef.current = window.setTimeout(() => {
+          reconnectRef.current = null;
+          connect();
+        }, 2000);
       };
     }
 
@@ -111,8 +128,14 @@ export function useOpsDashboard(orgId: number | null, limit = 20): UseOpsDashboa
         window.clearTimeout(debounceRef.current);
         debounceRef.current = null;
       }
+      if (reconnectRef.current != null) {
+        window.clearTimeout(reconnectRef.current);
+        reconnectRef.current = null;
+      }
     };
   }, [orgId, scheduleRefresh]);
+
+  const reload = useCallback(() => void load(), [load]);
 
   // Periodic poll, paused when tab is hidden.
   useEffect(() => {
@@ -133,7 +156,7 @@ export function useOpsDashboard(orgId: number | null, limit = 20): UseOpsDashboa
     error,
     queueUnavailable,
     runtime: data?.runtime ?? runtimeFallback ?? undefined,
-    reload: () => void load(),
+    reload,
     lastReloadedAt,
   };
 }

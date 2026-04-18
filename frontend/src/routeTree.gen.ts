@@ -20,9 +20,9 @@ import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AgentsNewRouteImport } from './routes/agents.new'
 import { Route as AgentsIdRouteImport } from './routes/agents.$id'
+import { Route as HubResearchIdRouteImport } from './routes/hub.research.$id'
 import { Route as AgentsEditIdRouteImport } from './routes/agents.edit.$id'
 import { Route as AgentsIdRunsRunIdRouteImport } from './routes/agents.$id.runs.$runId'
-import { Route as HubResearchIdRouteImport } from './routes/hub.research.$id'
 
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
@@ -79,6 +79,11 @@ const AgentsIdRoute = AgentsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AgentsRoute,
 } as any)
+const HubResearchIdRoute = HubResearchIdRouteImport.update({
+  id: '/research/$id',
+  path: '/research/$id',
+  getParentRoute: () => HubRoute,
+} as any)
 const AgentsEditIdRoute = AgentsEditIdRouteImport.update({
   id: '/edit/$id',
   path: '/edit/$id',
@@ -89,11 +94,6 @@ const AgentsIdRunsRunIdRoute = AgentsIdRunsRunIdRouteImport.update({
   path: '/runs/$runId',
   getParentRoute: () => AgentsIdRoute,
 } as any)
-const HubResearchIdRoute = HubResearchIdRouteImport.update({
-  id: '/hub/research/$id',
-  path: '/hub/research/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -101,15 +101,15 @@ export interface FileRoutesByFullPath {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/hub': typeof HubRoute
+  '/hub': typeof HubRouteWithChildren
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
-  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
   '/hub/research/$id': typeof HubResearchIdRoute
+  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -117,15 +117,15 @@ export interface FileRoutesByTo {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/hub': typeof HubRoute
+  '/hub': typeof HubRouteWithChildren
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
-  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
   '/hub/research/$id': typeof HubResearchIdRoute
+  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,15 +134,15 @@ export interface FileRoutesById {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/hub': typeof HubRoute
+  '/hub': typeof HubRouteWithChildren
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
-  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
   '/hub/research/$id': typeof HubResearchIdRoute
+  '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -159,8 +159,8 @@ export interface FileRouteTypes {
     | '/agents/$id'
     | '/agents/new'
     | '/agents/edit/$id'
-    | '/agents/$id/runs/$runId'
     | '/hub/research/$id'
+    | '/agents/$id/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -175,8 +175,8 @@ export interface FileRouteTypes {
     | '/agents/$id'
     | '/agents/new'
     | '/agents/edit/$id'
-    | '/agents/$id/runs/$runId'
     | '/hub/research/$id'
+    | '/agents/$id/runs/$runId'
   id:
     | '__root__'
     | '/'
@@ -191,8 +191,8 @@ export interface FileRouteTypes {
     | '/agents/$id'
     | '/agents/new'
     | '/agents/edit/$id'
-    | '/agents/$id/runs/$runId'
     | '/hub/research/$id'
+    | '/agents/$id/runs/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -201,8 +201,7 @@ export interface RootRouteChildren {
   ArchitectureRoute: typeof ArchitectureRoute
   ChatRoute: typeof ChatRoute
   CodeRoute: typeof CodeRoute
-  HubRoute: typeof HubRoute
-  HubResearchIdRoute: typeof HubResearchIdRoute
+  HubRoute: typeof HubRouteWithChildren
   LoginRoute: typeof LoginRoute
   LogsRoute: typeof LogsRoute
   SetupRoute: typeof SetupRoute
@@ -287,6 +286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIdRouteImport
       parentRoute: typeof AgentsRoute
     }
+    '/hub/research/$id': {
+      id: '/hub/research/$id'
+      path: '/research/$id'
+      fullPath: '/hub/research/$id'
+      preLoaderRoute: typeof HubResearchIdRouteImport
+      parentRoute: typeof HubRoute
+    }
     '/agents/edit/$id': {
       id: '/agents/edit/$id'
       path: '/edit/$id'
@@ -300,13 +306,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/agents/$id/runs/$runId'
       preLoaderRoute: typeof AgentsIdRunsRunIdRouteImport
       parentRoute: typeof AgentsIdRoute
-    }
-    '/hub/research/$id': {
-      id: '/hub/research/$id'
-      path: '/hub/research/$id'
-      fullPath: '/hub/research/$id'
-      preLoaderRoute: typeof HubResearchIdRouteImport
-      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -338,14 +337,23 @@ const AgentsRouteChildren: AgentsRouteChildren = {
 const AgentsRouteWithChildren =
   AgentsRoute._addFileChildren(AgentsRouteChildren)
 
+interface HubRouteChildren {
+  HubResearchIdRoute: typeof HubResearchIdRoute
+}
+
+const HubRouteChildren: HubRouteChildren = {
+  HubResearchIdRoute: HubResearchIdRoute,
+}
+
+const HubRouteWithChildren = HubRoute._addFileChildren(HubRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsRoute: AgentsRouteWithChildren,
   ArchitectureRoute: ArchitectureRoute,
   ChatRoute: ChatRoute,
   CodeRoute: CodeRoute,
-  HubRoute: HubRoute,
-  HubResearchIdRoute: HubResearchIdRoute,
+  HubRoute: HubRouteWithChildren,
   LoginRoute: LoginRoute,
   LogsRoute: LogsRoute,
   SetupRoute: SetupRoute,

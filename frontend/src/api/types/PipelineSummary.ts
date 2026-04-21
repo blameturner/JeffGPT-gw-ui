@@ -47,7 +47,7 @@ export interface PipelineLastJobs {
   [k: string]: unknown;
 }
 
-/** Pathfinder preview: result of POST /enrichment/pathfinder/fetch-next. */
+/** Pathfinder preview: surfaced via dashboard.pipeline.next_candidates.pathfinder. */
 export interface PathfinderPreviewResponse {
   status: string;
   source?: 'discovery' | 'scrape_target_fallback' | string | null;
@@ -55,7 +55,7 @@ export interface PathfinderPreviewResponse {
   error?: string | null;
 }
 
-/** Scraper preview: result of POST /enrichment/scraper/scrape-next. */
+/** Scraper preview: surfaced via dashboard.pipeline.next_candidates.scraper. */
 export interface ScraperPreviewRow extends Record<string, unknown> {
   Id?: number;
   url?: string;

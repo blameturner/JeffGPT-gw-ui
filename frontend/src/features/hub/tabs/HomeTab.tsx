@@ -3,18 +3,11 @@ import { health } from '../../../api/health/health';
 import { getQueueStatus } from '../../../api/queue/getQueueStatus';
 import { listQueueJobs } from '../../../api/queue/listQueueJobs';
 import { getHarnessStats } from '../../../api/harness/getHarnessStats';
-import { listDiscovery } from '../../../api/enrichment/pathfinder';
 import { listResearchPlans } from '../../../api/enrichment/research';
 import type { QueueStatus } from '../../../api/types/QueueStatus';
 import type { QueueJob } from '../../../api/types/QueueJob';
 import type { HarnessStats } from '../../../api/types/HarnessStats';
 import { formatNumber } from '../../../lib/utils/formatNumber';
-
-interface DiscoveryStats {
-  total: number;
-  scraped: number;
-  failed: number;
-}
 
 interface ResearchStats {
   pending: number;
@@ -29,18 +22,16 @@ export function HomeTab() {
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [recentJobs, setRecentJobs] = useState<QueueJob[]>([]);
   const [todayStats, setTodayStats] = useState<HarnessStats | null>(null);
-  const [discoveryStats, setDiscoveryStats] = useState<DiscoveryStats>({ total: 0, scraped: 0, failed: 0 });
   const [researchStats, setResearchStats] = useState<ResearchStats>({ pending: 0, generating: 0, complete: 0, failed: 0 });
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     try {
-      const [healthRes, queueStatusRes, jobsRes, statsRes, discoveryRes, researchRes] = await Promise.all([
+      const [healthRes, queueStatusRes, jobsRes, statsRes, researchRes] = await Promise.all([
         health(),
         getQueueStatus(),
         listQueueJobs({ limit: 5 }),
         getHarnessStats('7d'),
-        listDiscovery({ limit: 1000 }),
         listResearchPlans(),
       ]);
 
@@ -86,13 +77,6 @@ export function HomeTab() {
           period_end: '',
         });
       }
-
-      const discoveryItems = discoveryRes.items;
-      setDiscoveryStats({
-        total: discoveryItems.length,
-        scraped: discoveryItems.filter((i) => i.status === 'scraped').length,
-        failed: discoveryItems.filter((i) => i.status === 'failed').length,
-      });
 
       const researchItems = researchRes.items;
       setResearchStats({
@@ -187,24 +171,6 @@ export function HomeTab() {
                   <span className="text-muted"> ({((todayStats.total_errors / todayStats.total_requests) * 100).toFixed(1)}%)</span>
                 )}
               </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="border border-border rounded p-4 bg-panel/30">
-          <h3 className="text-[10px] uppercase tracking-[0.14em] text-muted mb-3">Discovery</h3>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-sm text-muted">Discovered</span>
-              <span className="text-sm font-mono text-fg">{discoveryStats.total}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-muted">Scraped</span>
-              <span className="text-sm font-mono text-fg">{discoveryStats.scraped}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-muted">Failed</span>
-              <span className="text-sm font-mono text-fg">{discoveryStats.failed}</span>
             </div>
           </div>
         </div>

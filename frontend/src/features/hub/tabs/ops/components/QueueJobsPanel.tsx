@@ -7,6 +7,7 @@ import { updateJobPriority } from '../../../../../api/queue/updateJobPriority';
 import type { OpsDashboardResponse } from '../../../../../api/types/OpsDashboard';
 import type { QueueJob } from '../../../../../api/types/QueueJob';
 import { extractApiFailure, fmt, fmtWhen, safeStringify } from '../lib/formatters';
+import { isLegacyTaskType, taskTypeLabel } from '../lib/taskTypeLabels';
 import { RowDrawer } from './RowDrawer';
 import { StatusChip } from './StatusChip';
 
@@ -138,7 +139,19 @@ export function QueueJobsPanel({
             {filtered.map((job) => (
               <tr key={job.job_id} className="hover:bg-panel/30">
                 <td className="px-3 py-2 font-mono text-xs text-muted">{job.job_id.slice(0, 8)}</td>
-                <td className="px-3 py-2">{job.type}</td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <span>{taskTypeLabel(job.type)}</span>
+                    {isLegacyTaskType(job.type) && (
+                      <span
+                        className="px-1.5 py-0.5 rounded border border-border text-[9px] uppercase tracking-[0.12em] text-muted"
+                        title={`Legacy task type: ${job.type}. New jobs no longer use this name.`}
+                      >
+                        legacy
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-3 py-2"><StatusChip status={job.status} /></td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1">

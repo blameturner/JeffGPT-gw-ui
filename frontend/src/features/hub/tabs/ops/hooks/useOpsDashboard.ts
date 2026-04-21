@@ -1,6 +1,8 @@
 // frontend/src/features/hub/tabs/ops/hooks/useOpsDashboard.ts
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getOpsDashboard } from '../../../../../api/ops/getOpsDashboard';
+import { getQueueDashboard } from '../../../../../api/queue/getQueueDashboard';
+import { listQueueJobs } from '../../../../../api/queue/listQueueJobs';
 import { getQueueRuntime } from '../../../../../api/queue/getQueueRuntime';
 import type { OpsDashboardResponse } from '../../../../../api/types/OpsDashboard';
 import { gatewayUrl } from '../../../../../lib/runtime-env';
@@ -43,13 +45,77 @@ export function useOpsDashboard(orgId: number | null, limit = 20): UseOpsDashboa
     try {
       const next = await getOpsDashboard({ org_id: orgId, limit });
       if (gen !== genRef.current) return;
+
+      // Some backend builds can return partial /ops/dashboard payloads.
+      // Fill queue-focused cards from dedicated queue endpoints when needed.
+      const needsQueueDashboard =
+        next.queue == null ||
+        next.runtime == null ||
+        next.scheduler == null ||
+        next.active_summary == null ||
+        next.queue_center?.backoff == null;
+      const needsQueueJobs =
+        next.queue_jobs == null ||
+        !Array.isArray(next.queue_jobs.rows) ||
+        next.queue_jobs.rows.length === 0;
+
+      const [queueDashboardFallback, queueJobsFallback] = await Promise.all([
+        needsQueueDashboard
+          ? getQueueDashboard({ org_id: orgId, limit }).catch(() => null)
+          : Promise.resolve(null),
+        needsQueueJobs
+          ? listQueueJobs({ org_id: orgId, limit: Math.max(limit, 20), verbose: true }).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      const merged: OpsDashboardResponse = {
+        ...next,
+        queue: next.queue ?? queueDashboardFallback?.queue,
+        runtime: next.runtime ?? queueDashboardFallback?.runtime,
+        scheduler: next.scheduler ?? queueDashboardFallback?.scheduler,
+        active_summary: next.active_summary ?? queueDashboardFallback?.active_summary,
+        queue_jobs:
+          next.queue_jobs ??
+          (queueJobsFallback?.jobs
+            ? { count: queueJobsFallback.jobs.length, rows: queueJobsFallback.jobs }
+            : queueDashboardFallback?.recent_jobs
+              ? {
+                  count: queueDashboardFallback.recent_jobs.length,
+                  rows: queueDashboardFallback.recent_jobs,
+                }
+              : undefined),
+        queue_center: next.queue_center
+          ? {
+              ...next.queue_center,
+              backoff: next.queue_center.backoff ?? queueDashboardFallback?.queue?.backoff,
+              health:
+                next.queue_center.health ??
+                (queueDashboardFallback?.runtime
+                  ? {
+                      tool_queue_ready: queueDashboardFallback.runtime.tool_queue_ready,
+                      huey_consumer_running: queueDashboardFallback.runtime.huey?.consumer_running,
+                      huey_workers: queueDashboardFallback.runtime.huey?.workers,
+                    }
+                  : undefined),
+            }
+          : queueDashboardFallback?.queue || queueDashboardFallback?.runtime
+            ? {
+                backoff: queueDashboardFallback.queue?.backoff,
+                health: {
+                  tool_queue_ready: queueDashboardFallback.runtime?.tool_queue_ready,
+                  huey_consumer_running: queueDashboardFallback.runtime?.huey?.consumer_running,
+                  huey_workers: queueDashboardFallback.runtime?.huey?.workers,
+                },
+              }
+            : undefined,
+      };
       if (next.status === 'failed' && next.error === 'tool_queue_unavailable') {
         setQueueUnavailable('Tool queue is unavailable. Start or restore the Huey consumer/runtime and retry.');
       } else {
         setQueueUnavailable(null);
         setRuntimeFallback(null);
       }
-      setData(next);
+      setData(merged);
       setLastReloadedAt(Date.now());
     } catch (err) {
       if (gen !== genRef.current) return;

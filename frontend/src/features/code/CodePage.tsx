@@ -3,6 +3,8 @@ import type { Codebase } from '../../api/types/Codebase';
 import { listModels } from '../../api/models/listModels';
 import { listStyles } from '../../api/styles/listStyles';
 import { listCodebases } from '../../api/codebases/listCodebases';
+import { getCodeMessages } from '../../api/code/getCodeMessages';
+import { getCodeWorkspace } from '../../api/code/getCodeWorkspace';
 import { ComposerDock } from '../../components/ComposerDock';
 import { Sheet } from '../../components/Sheet';
 import { isTransientNetworkError } from '../../lib/network/isTransientNetworkError';
@@ -25,6 +27,7 @@ import { useFileAttachment } from './hooks/useFileAttachment';
 import { usePlanChecklist } from './hooks/usePlanChecklist';
 import { useSessionResume } from './hooks/useSessionResume';
 import { groupCodeBlocksByMessage } from './utils/groupCodeBlocksByMessage';
+import { hydrateCodeMessages } from './utils/hydrateCodeMessages';
 import { parseCodeBlocks } from './utils/parseCodeBlocks';
 import { utf8ToB64 } from './utils/utf8ToB64';
 
@@ -216,6 +219,24 @@ export function CodePage() {
           if (saved) config.setStyleKey(saved);
           else if (config.codeStyles) config.setStyleKey(config.codeStyles.default);
         } catch {}
+        try {
+          const [msgRes, ws] = await Promise.all([
+            getCodeMessages(c.Id),
+            getCodeWorkspace(c.Id),
+          ]);
+          messaging.setMessages(hydrateCodeMessages(msgRes.messages));
+          const hydratedFiles: AttachedFile[] = (ws.files ?? []).map((f) => ({
+            name: f.name,
+            content: f.content,
+            content_b64: utf8ToB64(f.content),
+            size: f.content.length,
+          }));
+          fileAttachment.setFiles(hydratedFiles);
+        } catch (err) {
+          messaging.setError(
+            (err as Error)?.message ?? 'Failed to load session history',
+          );
+        }
       },
     });
   }
@@ -423,8 +444,21 @@ export function CodePage() {
               </div>
             ) : null
           }
-          searchSuppressed={config.searchSuppressed}
-          onToggleSearchSuppressed={() => config.setSearchSuppressed((v) => !v)}
+          searchSlot={
+            <button
+              type="button"
+              onClick={() => config.setSearchSuppressed((v) => !v)}
+              title={config.searchSuppressed ? 'Search disabled — click to re-enable' : 'Skip web search for this message'}
+              className={[
+                'px-2.5 py-1.5 rounded text-[11px] font-sans tracking-wide transition-colors border',
+                config.searchSuppressed
+                  ? 'border-red-600/50 text-red-500 bg-red-500/10 hover:bg-red-500/20'
+                  : 'border-border text-muted hover:border-fg hover:text-fg',
+              ].join(' ')}
+            >
+              {config.searchSuppressed ? 'Search off' : 'Search on'}
+            </button>
+          }
         />
       </div>
 

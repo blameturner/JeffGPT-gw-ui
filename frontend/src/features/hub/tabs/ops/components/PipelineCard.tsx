@@ -22,6 +22,10 @@ export interface PipelineCardProps {
   disabled?: boolean;
   busy?: boolean;
   onKick: () => void;
+  /** When defined, clicking the card body deep-links into the associated detail panel. */
+  onFocus?: () => void;
+  /** Badge rendered in the card header — used for pending-count, pile depth, etc. */
+  stageBadge?: { label: string; tone: 'info' | 'warn' | 'muted' };
 }
 
 export function PipelineCard({
@@ -32,16 +36,40 @@ export function PipelineCard({
   disabled,
   busy,
   onKick,
+  onFocus,
+  stageBadge,
 }: PipelineCardProps) {
   const cadence =
     config?.interval_minutes != null ? `every ${config.interval_minutes}m` : '—';
   const enabledLabel = config?.enabled === false ? 'disabled' : 'enabled';
 
   return (
-    <div className="border border-border rounded p-3 space-y-2 min-w-[14rem]">
+    <div
+      className={[
+        'border border-border rounded p-3 space-y-2 min-w-[14rem]',
+        onFocus ? 'cursor-pointer hover:border-fg transition-colors' : '',
+      ].join(' ')}
+      onClick={onFocus}
+    >
       <div className="flex items-center justify-between">
         <p className="text-[10px] uppercase tracking-[0.16em] text-muted">{TITLE[kind]}</p>
-        <span className="text-[10px] uppercase tracking-[0.14em] text-muted">{enabledLabel}</span>
+        <div className="flex items-center gap-1.5">
+          {stageBadge && (
+            <span
+              className={[
+                'px-1.5 py-0.5 rounded text-[9px] uppercase tracking-[0.12em]',
+                stageBadge.tone === 'warn'
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : stageBadge.tone === 'info'
+                    ? 'bg-blue-500/20 text-blue-300'
+                    : 'bg-panel text-muted',
+              ].join(' ')}
+            >
+              {stageBadge.label}
+            </span>
+          )}
+          <span className="text-[10px] uppercase tracking-[0.14em] text-muted">{enabledLabel}</span>
+        </div>
       </div>
 
       <div className="text-sm">
@@ -80,7 +108,10 @@ export function PipelineCard({
 
       <button
         type="button"
-        onClick={onKick}
+        onClick={(e) => {
+          e.stopPropagation();
+          onKick();
+        }}
         disabled={disabled || busy}
         className="px-3 py-1.5 rounded border border-border text-[11px] uppercase tracking-[0.14em] hover:bg-panel disabled:opacity-50 disabled:cursor-not-allowed"
       >

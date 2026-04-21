@@ -111,11 +111,15 @@ export function OpsTab() {
 
       <PipelineRibbon
         pipeline={dashboard.data?.pipeline}
-        runtime={dashboard.runtime}
-        backoff={dashboard.data?.queue_center?.backoff ?? dashboard.data?.queue?.backoff}
+        suggestionsCount={dashboard.data?.suggestions?.count}
+        scrapeTargetsCount={dashboard.data?.scrape_targets?.count}
         triggersDisabled={triggersDisabled}
         busy={busyKick}
         onKick={kick}
+        onFocusStage={(stage) => {
+          if (stage === 'scraper') setSubTab('scrape-targets');
+          else setSubTab('suggestions');
+        }}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-4">

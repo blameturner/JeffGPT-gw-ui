@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import type { Question } from '../../../api/home/types';
 import { answerQuestion, dismissQuestion } from '../../../api/home/mutations';
 import { useToast } from '../../../lib/toast/useToast';
@@ -17,8 +18,15 @@ export function QuestionsPanel({
   registerScrollTarget,
 }: Props) {
   const toast = useToast();
+  const [optimisticallyHidden, setOptimisticallyHidden] = useState<Set<number>>(new Set());
+
+  const visibleQuestions = useMemo(
+    () => questions.filter((q) => !optimisticallyHidden.has(q.id)),
+    [optimisticallyHidden, questions],
+  );
 
   async function handleAnswer(q: Question, selectedOption: string, answerText: string) {
+    setOptimisticallyHidden((s) => new Set(s).add(q.id));
     try {
       const { job_id } = await answerQuestion({
         id: q.id,
@@ -29,21 +37,32 @@ export function QuestionsPanel({
       toast.success('Answer sent');
       onRefetch();
     } catch (err) {
+      setOptimisticallyHidden((s) => {
+        const next = new Set(s);
+        next.delete(q.id);
+        return next;
+      });
       toast.error(`Answer failed: ${err instanceof Error ? err.message : 'unknown'}`);
     }
   }
 
   async function handleDismiss(q: Question) {
+    setOptimisticallyHidden((s) => new Set(s).add(q.id));
     try {
       await dismissQuestion({ id: q.id });
       toast.info('Question dismissed');
       onRefetch();
     } catch (err) {
+      setOptimisticallyHidden((s) => {
+        const next = new Set(s);
+        next.delete(q.id);
+        return next;
+      });
       toast.error(`Dismiss failed: ${err instanceof Error ? err.message : 'unknown'}`);
     }
   }
 
-  if (questions.length === 0) {
+  if (visibleQuestions.length === 0) {
     return (
       <div className="border border-dashed border-border px-4 py-6 text-center text-[12px] text-muted">
         No pending questions.
@@ -54,7 +73,7 @@ export function QuestionsPanel({
   return (
     <div className="space-y-2">
       <div className="px-1 text-[11px] uppercase tracking-[0.18em] text-muted">Pending questions</div>
-      {questions.map((q) => (
+      {visibleQuestions.map((q) => (
         <QuestionCard
           key={q.id}
           q={q}
@@ -66,4 +85,5 @@ export function QuestionsPanel({
     </div>
   );
 }
+
 

@@ -4,14 +4,14 @@ import { listCodeConversations } from '../../../../api/code/listCodeConversation
 import type { CodeConversation } from '../../../../api/types/CodeConversation';
 import { formatRelative } from '../../../../lib/utils/formatRelative';
 
-export function CodeConvosWidget() {
+export function CodeConvosWidget({ refreshSignal }: { refreshSignal?: unknown }) {
   const [items, setItems] = useState<CodeConversation[]>([]);
 
   useEffect(() => {
     listCodeConversations()
       .then((r) => setItems(r.conversations ?? []))
       .catch(() => setItems([]));
-  }, []);
+  }, [refreshSignal]);
 
   return (
     <div className="border border-border p-3">
@@ -36,4 +36,5 @@ export function CodeConvosWidget() {
     </div>
   );
 }
+
 

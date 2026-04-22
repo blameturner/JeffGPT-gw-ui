@@ -47,6 +47,11 @@ export function DashboardTab({ overview, health, refetch }: Props) {
 
   const pending = overview?.pending_questions ?? [];
   const schedules = overview?.schedules ?? [];
+  const feedRefreshKey = [
+    overview?.digest?.id ?? 0,
+    overview?.recent_insights?.[0]?.id ?? 0,
+    pending.length,
+  ].join(':');
 
   return (
     <div className="flex flex-col">
@@ -59,7 +64,7 @@ export function DashboardTab({ overview, health, refetch }: Props) {
       <div className="grid grid-cols-[280px_minmax(0,1fr)_360px] gap-4 p-4">
         <aside className="space-y-2">
           <SchedulesPanel schedules={schedules} />
-          <WidgetRail overview={overview} />
+          <WidgetRail overview={overview} refreshSignal={overview} />
         </aside>
 
         <main className="min-w-0 space-y-4">
@@ -72,11 +77,11 @@ export function DashboardTab({ overview, health, refetch }: Props) {
               else questionRefs.current.delete(id);
             }}
           />
-          <Feed onOpen={openFeedItem} />
+          <Feed onOpen={openFeedItem} refreshKey={feedRefreshKey} />
         </main>
 
         <aside className="h-[calc(100vh-200px)] min-h-[500px]">
-          <HomeChat ref={chatRef} />
+          <HomeChat ref={chatRef} conversationId={overview?.home_conversation?.id ?? null} />
         </aside>
       </div>
 

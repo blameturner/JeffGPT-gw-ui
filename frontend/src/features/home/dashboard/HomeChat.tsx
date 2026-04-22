@@ -8,8 +8,12 @@ export interface HomeChatHandle {
   focusInput: () => void;
 }
 
-export const HomeChat = forwardRef<HomeChatHandle>(function HomeChat(_props, ref) {
-  const { messages, sending, send, attachStream } = useHomeChat();
+interface Props {
+  conversationId?: number | null;
+}
+
+export const HomeChat = forwardRef<HomeChatHandle, Props>(function HomeChat({ conversationId }, ref) {
+  const { messages, sending, send, attachStream } = useHomeChat(conversationId);
   const [text, setText] = useState('');
   const [searchMode, setSearchMode] = useState<'disabled' | 'basic' | 'standard'>('basic');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -86,4 +90,5 @@ export const HomeChat = forwardRef<HomeChatHandle>(function HomeChat(_props, ref
     </div>
   );
 });
+
 

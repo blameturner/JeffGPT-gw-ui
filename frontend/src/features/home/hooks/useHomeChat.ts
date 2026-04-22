@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getConversationMessages } from '../../../api/chat/getConversationMessages';
 import { isRateLimited, sendHomeChat } from '../../../api/home/mutations';
 import { subscribeJob, type SubscribeJobHandle } from '../../../lib/sse/subscribeJob';
 import { emitToast } from '../../../lib/toast/ToastHost';
@@ -10,7 +11,7 @@ export interface ChatMessage {
   streaming?: boolean;
 }
 
-export function useHomeChat() {
+export function useHomeChat(conversationId?: number | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const handles = useRef<SubscribeJobHandle[]>([]);
@@ -67,6 +68,30 @@ export function useHomeChat() {
     [attachStream, sending],
   );
 
+  useEffect(() => {
+    if (!conversationId) return;
+    let active = true;
+    getConversationMessages(conversationId)
+      .then((res) => {
+        if (!active) return;
+        const seeded = (res.messages ?? [])
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({
+            id: `h-${m.Id}`,
+            role: m.role,
+            text: m.content || '',
+            streaming: false,
+          }));
+        setMessages(seeded);
+      })
+      .catch(() => {
+        if (active) setMessages([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [conversationId]);
+
   useEffect(
     () => () => {
       handles.current.forEach((h) => h.close());
@@ -77,4 +102,5 @@ export function useHomeChat() {
 
   return { messages, sending, send, attachStream };
 }
+
 

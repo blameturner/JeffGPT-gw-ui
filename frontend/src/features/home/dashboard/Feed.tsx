@@ -1,34 +1,49 @@
 // frontend/src/features/home/dashboard/Feed.tsx
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { listHomeFeed } from '../../../api/home/feed';
 import type { FeedItem as FeedItemT } from '../../../api/home/types';
 import { FeedItem } from './FeedItem';
 
 interface Props {
   onOpen: (item: FeedItemT) => void;
+  refreshKey?: string;
 }
 
-export function Feed({ onOpen }: Props) {
+function oldestCreatedAt(items: FeedItemT[]): string | undefined {
+  if (items.length === 0) return undefined;
+  return items
+    .map((i) => i.created_at)
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+}
+
+export function Feed({ onOpen, refreshKey }: Props) {
   const [items, setItems] = useState<FeedItemT[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const itemsRef = useRef<FeedItemT[]>([]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const load = useCallback(async (append = false) => {
     if (append) setLoadingMore(true);
     else setLoading(true);
     try {
-      const res = await listHomeFeed({ limit: 25 });
+      const before = append ? oldestCreatedAt(itemsRef.current) : undefined;
+      const res = await listHomeFeed({ limit: 25, before });
       if (append) {
         // Append, de-duplicating by kind+id
-        setItems((prev) => {
-          const seen = new Set(prev.map((i) => `${i.kind}:${i.id}`));
-          const next = res.items.filter((i) => !seen.has(`${i.kind}:${i.id}`));
-          return [...prev, ...next];
-        });
-        if (res.items.length === 0) setHasMore(false);
+        const seen = new Set(itemsRef.current.map((i) => `${i.kind}:${i.id}`));
+        const next = res.items.filter((i) => !seen.has(`${i.kind}:${i.id}`));
+        const combined = [...itemsRef.current, ...next];
+        setItems(combined);
+        itemsRef.current = combined;
+        if (res.items.length < 25 || next.length === 0) setHasMore(false);
       } else {
         setItems(res.items);
+        itemsRef.current = res.items;
         setHasMore(res.items.length === 25);
       }
     } finally {
@@ -39,7 +54,7 @@ export function Feed({ onOpen }: Props) {
 
   useEffect(() => {
     load(false);
-  }, [load]);
+  }, [load, refreshKey]);
 
   if (loading) {
     return (

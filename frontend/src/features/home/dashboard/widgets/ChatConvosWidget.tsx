@@ -4,14 +4,14 @@ import { listConversations } from '../../../../api/chat/listConversations';
 import type { Conversation } from '../../../../api/types/Conversation';
 import { formatRelative } from '../../../../lib/utils/formatRelative';
 
-export function ChatConvosWidget() {
+export function ChatConvosWidget({ refreshSignal }: { refreshSignal?: unknown }) {
   const [items, setItems] = useState<Conversation[]>([]);
 
   useEffect(() => {
     listConversations()
       .then((r) => setItems(r.conversations ?? []))
       .catch(() => setItems([]));
-  }, []);
+  }, [refreshSignal]);
 
   return (
     <div className="border border-border p-3">
@@ -36,4 +36,3 @@ export function ChatConvosWidget() {
     </div>
   );
 }
-

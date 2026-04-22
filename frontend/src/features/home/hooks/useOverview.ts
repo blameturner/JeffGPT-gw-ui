@@ -35,6 +35,11 @@ export function useOverview(pollMs = 60_000) {
     }
   }, []);
 
+  const refetchAfter = useCallback(
+    (ms: number) => window.setTimeout(() => void refetch(), ms),
+    [refetch],
+  );
+
   useEffect(() => {
     mounted.current = true;
     refetch();
@@ -48,5 +53,5 @@ export function useOverview(pollMs = 60_000) {
     };
   }, [pollMs, refetch]);
 
-  return { ...state, refetch };
+  return { ...state, refetch, refetchAfter };
 }

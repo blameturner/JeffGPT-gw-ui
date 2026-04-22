@@ -8,18 +8,20 @@ import { ScrapersWidget } from './widgets/ScrapersWidget';
 
 interface Props {
   overview: HomeOverview | null;
+  refreshSignal?: unknown;
 }
 
-export function WidgetRail({ overview }: Props) {
+export function WidgetRail({ overview, refreshSignal }: Props) {
   return (
     <div className="space-y-2">
       <EmailWidget env={overview?.widgets.email} />
       <CalendarWidget env={overview?.widgets.calendar} />
       <GraphWidget env={overview?.widgets.graph} />
-      <CodeConvosWidget />
-      <ChatConvosWidget />
-      <ScrapersWidget />
+      <CodeConvosWidget refreshSignal={refreshSignal} />
+      <ChatConvosWidget refreshSignal={refreshSignal} />
+      <ScrapersWidget refreshSignal={refreshSignal} />
     </div>
   );
 }
+
 

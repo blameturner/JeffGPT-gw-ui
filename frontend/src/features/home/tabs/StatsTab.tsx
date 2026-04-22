@@ -7,6 +7,8 @@ import { StatCard } from '../legacy/components/StatCard';
 import { DailyChart } from '../legacy/components/DailyChart';
 import { Heatmap } from '../legacy/components/Heatmap';
 import { relDate } from '../legacy/utils/relDate';
+import { TodaySection } from '../stats/TodaySection';
+import { OverviewSection } from '../stats/OverviewSection';
 
 export function StatsTab() {
   const [stats, setStats] = useState<HarnessStats | null>(null);
@@ -30,7 +32,10 @@ export function StatsTab() {
   ];
 
   return (
-    <div className="px-8 py-6 space-y-8">
+    <div>
+      <TodaySection />
+      <OverviewSection />
+      <div className="space-y-8 px-8 py-6">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl">Usage statistics</h2>
         <div className="flex gap-1">
@@ -226,6 +231,7 @@ export function StatsTab() {
 
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -4,7 +4,6 @@ import type { HomeHealth } from '../../../api/home/types';
 import { formatSecondsSinceChat } from '../../../lib/utils/formatRelative';
 import { useToast } from '../../../lib/toast/useToast';
 import { runDigest, produceInsight, runBriefing } from '../../../api/home/mutations';
-import { subscribeJob } from '../../../lib/sse/subscribeJob';
 import { ProduceInsightPopover } from './ProduceInsightPopover';
 
 interface Props {

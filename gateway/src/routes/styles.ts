@@ -5,7 +5,7 @@ import { listStyles } from '../services/harness/index.js';
 
 export const stylesRoute = new Hono();
 
-const TTL_MS = 24 * 60 * 60 * 1000;
+const TTL_MS = 60 * 1000;
 
 interface CacheEntry {
   body: unknown;

@@ -137,7 +137,7 @@ export function Select<T extends string | number>({
               bottom: pos.bottom,
               minWidth: menuWidth,
             }}
-            className="fixed z-[70] max-h-[340px] overflow-y-auto border border-border bg-bg shadow-2xl rounded-md py-1"
+            className="fixed z-[70] max-h-[70vh] overflow-y-auto border border-border bg-bg shadow-2xl rounded-md py-1"
           >
             {options.length === 0 ? (
               <p className="px-3 py-2 text-[12px] text-muted">No options</p>

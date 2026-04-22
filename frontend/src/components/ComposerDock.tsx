@@ -121,8 +121,8 @@ export function ComposerDock({
                   placeholder="Pick style"
                   options={styles.map((s) => ({
                     value: s.key,
-                    label: styleLabel(s.key),
-                    description: s.prompt,
+                    label: s.label ?? styleLabel(s.key),
+                    description: s.description,
                   }))}
                   leading={<span className="w-1.5 h-1.5 rounded-full bg-fg/70" />}
                 />

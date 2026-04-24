@@ -9,7 +9,7 @@ interface Props {
 export function ProduceInsightPopover({ onSubmit, onClose }: Props) {
   const [text, setText] = useState('');
   return (
-    <div className="absolute right-0 top-full mt-2 z-10 w-80 rounded border border-border bg-bg p-3 shadow-lg">
+    <div className="absolute right-0 top-full mt-2 z-10 w-[min(20rem,calc(100vw-2rem))] rounded border border-border bg-bg p-3 shadow-lg">
       <p className="text-[11px] uppercase tracking-[0.14em] text-muted mb-2">
         Optional topic hint
       </p>

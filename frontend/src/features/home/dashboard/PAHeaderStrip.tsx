@@ -94,16 +94,25 @@ export function PAHeaderStrip({ status, onPinged, onOpenMind, onOpenFacts }: Pro
           <button
             type="button"
             onClick={onOpenFacts}
-            className="text-[11px] uppercase tracking-[0.14em] font-sans text-muted hover:text-fg"
+            className="hidden sm:inline-block text-[11px] uppercase tracking-[0.14em] font-sans text-muted hover:text-fg"
             title="What the PA knows about me"
           >
             What I know
           </button>
           <button
             type="button"
+            onClick={onOpenFacts}
+            className="sm:hidden text-[12px] font-sans text-muted hover:text-fg px-1.5 py-0.5 border border-border"
+            aria-label="What the PA knows about me"
+            title="What the PA knows about me"
+          >
+            ?
+          </button>
+          <button
+            type="button"
             disabled={busy}
             onClick={() => void handlePing()}
-            className="border border-fg px-3 py-1 text-[11px] uppercase tracking-[0.16em] font-sans text-fg hover:bg-fg hover:text-bg disabled:opacity-40 transition-colors"
+            className="border border-fg px-3 py-1.5 sm:py-1 text-[11px] uppercase tracking-[0.16em] font-sans text-fg hover:bg-fg hover:text-bg disabled:opacity-40 transition-colors whitespace-nowrap"
           >
             {busy ? 'Pinging…' : 'Catch me up ›'}
           </button>

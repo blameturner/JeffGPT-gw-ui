@@ -106,7 +106,7 @@ export function GreetingStrip({ health, onAfterMutate, onChatStream }: Props) {
         </div>
 
         {/* Actions */}
-        <div className="flex items-stretch gap-2 relative">
+        <div className="flex items-stretch gap-2 flex-wrap relative">
           <button
             data-shortcut="brief"
             onClick={handleBrief}

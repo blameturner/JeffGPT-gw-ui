@@ -57,37 +57,40 @@ export const HomeChat = forwardRef<HomeChatHandle, Props>(function HomeChat({ co
         ))}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-border p-2">
+      <div className="border-t border-border p-2 space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            data-chat-input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Message…"
+            className="flex-1 min-w-0 border border-border bg-transparent px-2 py-2 text-[14px] sm:text-[13px] outline-none focus:border-fg"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void handleSend();
+              }
+            }}
+          />
+          <button
+            disabled={sending || !text.trim()}
+            onClick={() => void handleSend()}
+            className="shrink-0 border border-fg px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-fg hover:bg-fg hover:text-bg disabled:opacity-40"
+          >
+            Send
+          </button>
+        </div>
         <select
           value={searchMode}
           onChange={(e) => setSearchMode(e.target.value as 'disabled' | 'basic' | 'standard')}
-          className="border border-border bg-transparent px-1 py-1 text-[11px] uppercase tracking-[0.14em] text-muted"
+          className="w-full sm:w-auto border border-border bg-transparent px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-muted"
+          aria-label="Search mode"
         >
           <option value="disabled">No search</option>
-          <option value="basic">Basic</option>
-          <option value="standard">Standard</option>
+          <option value="basic">Basic search</option>
+          <option value="standard">Standard search</option>
         </select>
-        <input
-          ref={inputRef}
-          data-chat-input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Message...  ( / to focus )"
-          className="flex-1 border border-border bg-transparent px-2 py-1.5 text-[13px] outline-none focus:border-fg"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void handleSend();
-            }
-          }}
-        />
-        <button
-          disabled={sending || !text.trim()}
-          onClick={() => void handleSend()}
-          className="border border-fg px-3 py-1.5 text-[12px] uppercase tracking-[0.14em] text-fg hover:bg-fg hover:text-bg disabled:opacity-40"
-        >
-          Send
-        </button>
       </div>
     </div>
   );

@@ -9,12 +9,16 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   streaming?: boolean;
+  model?: string | null;
 }
 
 export function useHomeChat(conversationId?: number | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
   const handles = useRef<SubscribeJobHandle[]>([]);
+
+  const refresh = useCallback(() => setReloadTick((t) => t + 1), []);
 
   const attachStream = useCallback((jobId: string) => {
     const localId = `a-${jobId}`;
@@ -74,23 +78,31 @@ export function useHomeChat(conversationId?: number | null) {
     getConversationMessages(conversationId)
       .then((res) => {
         if (!active) return;
-        const seeded = (res.messages ?? [])
+        const seeded: ChatMessage[] = (res.messages ?? [])
           .filter((m) => m.role === 'user' || m.role === 'assistant')
           .map((m) => ({
             id: `h-${m.Id}`,
-            role: m.role,
+            role: m.role as 'user' | 'assistant',
             text: m.content || '',
             streaming: false,
+            model: m.model ?? null,
           }));
-        setMessages(seeded);
+        setMessages((prev) => {
+          // Preserve any in-flight streamed messages that haven't been persisted yet.
+          const seededIds = new Set(seeded.map((s) => s.id));
+          const live = prev.filter(
+            (p) => p.streaming || (!p.id.startsWith('h-') && !seededIds.has(p.id)),
+          );
+          return [...seeded, ...live];
+        });
       })
       .catch(() => {
-        if (active) setMessages([]);
+        if (active) setMessages((prev) => prev.filter((p) => p.streaming));
       });
     return () => {
       active = false;
     };
-  }, [conversationId]);
+  }, [conversationId, reloadTick]);
 
   useEffect(
     () => () => {
@@ -100,7 +112,7 @@ export function useHomeChat(conversationId?: number | null) {
     [],
   );
 
-  return { messages, sending, send, attachStream };
+  return { messages, sending, send, attachStream, refresh };
 }
 
 

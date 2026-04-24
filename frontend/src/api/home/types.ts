@@ -57,6 +57,57 @@ export interface Insight {
   surfaced_at: string | null;
 }
 
+// Personal Assistant surfaces
+export interface PAStatus {
+  enabled: boolean;
+  last_proactive_at: string | null;
+  gap_ready: boolean;
+  seconds_until_auto_ready: number | null;
+  warm_topics: number;
+  open_loops: number;
+}
+
+export interface PARunResponse {
+  status: string;
+  surfaced: boolean;
+  kind?: string;
+  text?: string;
+  why?: string;
+  message_id?: number;
+  reason?: string;
+}
+
+export type LoopStatus = 'open' | 'nudged' | 'resolved' | 'dropped';
+
+export interface PALoop {
+  Id: number;
+  text: string;
+  intent: string;
+  when_hint: string | null;
+  status: LoopStatus;
+  nudge_count: number;
+  CreatedAt: string;
+}
+
+export interface PATopic {
+  Id: number;
+  entity_or_phrase: string;
+  kind: string;
+  warmth: number;
+  last_touched_at: string | null;
+  background_brief: string;
+  sources: string[] | { url: string; title?: string }[];
+}
+
+export interface PAFact {
+  Id: number;
+  kind: string;
+  key: string;
+  value: string;
+  confidence: number;
+  last_seen_at: string | null;
+}
+
 export interface Schedule {
   id: number;
   agent_name: string;

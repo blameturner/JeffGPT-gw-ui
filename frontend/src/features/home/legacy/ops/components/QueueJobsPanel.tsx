@@ -93,8 +93,8 @@ export function QueueJobsPanel({
   async function handleRunNow(jobId: string) {
     await withAction(jobId, async () => {
       const res = await runQueueJobNow(jobId);
-      if (res.status === 'running' || res.status === 'queued') {
-        setActionMessage(`running ${jobId}`);
+      if (res.status === 'dispatched') {
+        setActionMessage(`dispatched ${jobId}`);
       } else {
         setActionMessage(`run-now ${res.status}: ${res.error ?? ''}`);
       }

@@ -6,6 +6,7 @@ import { ChatMessage } from './ChatMessage';
 export interface HomeChatHandle {
   attachStream: (jobId: string) => void;
   focusInput: () => void;
+  refresh: () => void;
 }
 
 interface Props {
@@ -13,7 +14,7 @@ interface Props {
 }
 
 export const HomeChat = forwardRef<HomeChatHandle, Props>(function HomeChat({ conversationId }, ref) {
-  const { messages, sending, send, attachStream } = useHomeChat(conversationId);
+  const { messages, sending, send, attachStream, refresh } = useHomeChat(conversationId);
   const [text, setText] = useState('');
   const [searchMode, setSearchMode] = useState<'disabled' | 'basic' | 'standard'>('basic');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -22,6 +23,7 @@ export const HomeChat = forwardRef<HomeChatHandle, Props>(function HomeChat({ co
   useImperativeHandle(ref, () => ({
     attachStream,
     focusInput: () => inputRef.current?.focus(),
+    refresh,
   }));
 
   useEffect(() => {

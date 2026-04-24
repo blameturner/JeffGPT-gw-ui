@@ -1,8 +1,11 @@
 import { http } from '../../lib/http';
 
 export interface RunQueueJobNowResponse {
-  status: 'running' | 'queued' | 'failed' | string;
+  status: 'dispatched' | string;
   job_id?: string;
+  type?: string;
+  priority?: number;
+  bypass_idle?: boolean;
   error?: string;
 }
 

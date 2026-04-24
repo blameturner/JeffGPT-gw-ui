@@ -320,3 +320,110 @@ homeRoute.get('/conversation/export', async (c) => {
   }
 });
 
+// ---- Personal Assistant surfaces ----
+
+homeRoute.get('/pa/status', async (c) => {
+  const { orgId } = getAuthContext(c);
+  const qs = scopedSearch(c.req.url, orgId);
+  try {
+    const res = await harnessClient.get(`/home/pa/status${qs}`, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+
+homeRoute.post('/pa/run', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const { orgId } = getAuthContext(c);
+  const payload = { ...(body ?? {}), org_id: Number((body as any)?.org_id ?? orgId) };
+  try {
+    const res = await harnessClient.post('/home/pa/run', payload, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+
+homeRoute.get('/loops', async (c) => {
+  const { orgId } = getAuthContext(c);
+  const qs = scopedSearch(c.req.url, orgId);
+  try {
+    const res = await harnessClient.get(`/home/loops${qs}`, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+
+homeRoute.post('/loops/:id/resolve', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => null);
+  const { orgId } = getAuthContext(c);
+  const payload = { ...(body ?? {}), org_id: Number((body as any)?.org_id ?? orgId) };
+  try {
+    const res = await harnessClient.post(
+      `/home/loops/${encodeURIComponent(id)}/resolve`,
+      payload,
+      TIMEOUT,
+    );
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+
+homeRoute.post('/loops/:id/drop', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => null);
+  const { orgId } = getAuthContext(c);
+  const payload = { ...(body ?? {}), org_id: Number((body as any)?.org_id ?? orgId) };
+  try {
+    const res = await harnessClient.post(
+      `/home/loops/${encodeURIComponent(id)}/drop`,
+      payload,
+      TIMEOUT,
+    );
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+
+homeRoute.get('/topics', async (c) => {
+  const { orgId } = getAuthContext(c);
+  const qs = scopedSearch(c.req.url, orgId);
+  try {
+    const res = await harnessClient.get(`/home/topics${qs}`, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+
+homeRoute.get('/facts', async (c) => {
+  const { orgId } = getAuthContext(c);
+  const qs = scopedSearch(c.req.url, orgId);
+  try {
+    const res = await harnessClient.get(`/home/facts${qs}`, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+
+homeRoute.delete('/facts/:id', async (c) => {
+  const id = c.req.param('id');
+  const { orgId } = getAuthContext(c);
+  const qs = scopedSearch(c.req.url, orgId);
+  try {
+    const res = await harnessClient.delete(
+      `/home/facts/${encodeURIComponent(id)}${qs}`,
+      TIMEOUT,
+    );
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+

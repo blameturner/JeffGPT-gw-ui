@@ -9,6 +9,10 @@ import { SchedulesPanel } from '../dashboard/SchedulesPanel';
 import { WidgetRail } from '../dashboard/WidgetRail';
 import { DigestModal } from '../dashboard/modals/DigestModal';
 import { InsightModal } from '../dashboard/modals/InsightModal';
+import { PAFactsModal } from '../dashboard/modals/PAFactsModal';
+import { PAHeaderStrip } from '../dashboard/PAHeaderStrip';
+import { OnMyMindPanel } from '../dashboard/OnMyMindPanel';
+import { usePAStatus } from '../hooks/usePAStatus';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 interface Props {
@@ -22,6 +26,9 @@ export function DashboardTab({ overview, health, refetch }: Props) {
   const questionRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const [digestModal, setDigestModal] = useState<{ date?: string } | null>(null);
   const [insightModal, setInsightModal] = useState<number | null>(null);
+  const [mindOpen, setMindOpen] = useState(false);
+  const [factsOpen, setFactsOpen] = useState(false);
+  const { status: paStatus, refresh: refreshPA } = usePAStatus();
 
   useKeyboardShortcuts({
     onSlash: () => chatRef.current?.focusInput(),
@@ -53,6 +60,8 @@ export function DashboardTab({ overview, health, refetch }: Props) {
     pending.length,
   ].join(':');
 
+  const paEnabled = paStatus?.enabled ?? false;
+
   return (
     <div className="flex flex-col">
       <GreetingStrip
@@ -61,8 +70,20 @@ export function DashboardTab({ overview, health, refetch }: Props) {
         onChatStream={(jobId) => chatRef.current?.attachStream(jobId)}
       />
 
+      {paEnabled && paStatus && (
+        <PAHeaderStrip
+          status={paStatus}
+          onPinged={() => {
+            void refreshPA();
+            chatRef.current?.refresh();
+          }}
+          onOpenMind={() => setMindOpen(true)}
+          onOpenFacts={() => setFactsOpen(true)}
+        />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_360px] gap-6 sm:gap-8 px-4 sm:px-8 py-5 sm:py-7">
-        <main className="min-w-0 space-y-8 order-2 lg:order-2">
+        <main className="min-w-0 space-y-8 order-1 lg:order-2">
           {/* Questions sit on a warmer paper tint to read as a separate spread */}
           <div className="rounded-none bg-panel/60 border border-border px-4 sm:px-5 py-4">
             <QuestionsPanel
@@ -78,12 +99,12 @@ export function DashboardTab({ overview, health, refetch }: Props) {
           <Feed onOpen={openFeedItem} refreshKey={feedRefreshKey} />
         </main>
 
-        <aside className="space-y-6 order-3 lg:order-1">
+        <aside className="space-y-6 order-2 lg:order-1">
           <SchedulesPanel schedules={schedules} />
           <WidgetRail overview={overview} refreshSignal={overview} />
         </aside>
 
-        <aside className="h-[60vh] min-h-[400px] lg:h-[calc(100vh-240px)] lg:min-h-[500px] order-1 xl:order-3 lg:col-span-2 xl:col-span-1">
+        <aside className="h-[70vh] min-h-[420px] lg:h-[calc(100vh-240px)] lg:min-h-[500px] order-3 lg:col-span-2 xl:col-span-1">
           <HomeChat ref={chatRef} conversationId={overview?.home_conversation?.id ?? null} />
         </aside>
       </div>
@@ -92,6 +113,14 @@ export function DashboardTab({ overview, health, refetch }: Props) {
       {insightModal != null && (
         <InsightModal id={insightModal} onClose={() => setInsightModal(null)} />
       )}
+      {paEnabled && (
+        <OnMyMindPanel
+          open={mindOpen}
+          onClose={() => setMindOpen(false)}
+          onChanged={refreshPA}
+        />
+      )}
+      {paEnabled && factsOpen && <PAFactsModal onClose={() => setFactsOpen(false)} />}
     </div>
   );
 }

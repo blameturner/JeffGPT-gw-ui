@@ -94,6 +94,8 @@ export function DashboardTab({ overview, health, refetch }: Props) {
                 if (el) questionRefs.current.set(id, el);
                 else questionRefs.current.delete(id);
               }}
+              onOpenInsight={(insightId) => setInsightModal(insightId)}
+              onOpenLoops={() => setMindOpen(true)}
             />
           </div>
           <Feed onOpen={openFeedItem} refreshKey={feedRefreshKey} />

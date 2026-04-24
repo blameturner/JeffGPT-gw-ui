@@ -1,22 +1,73 @@
 import { forwardRef, useState } from 'react';
 import type { Question } from '../../../api/home/types';
 import { formatRelative } from '../../../lib/utils/formatRelative';
+import { parseContextRef } from './questionContextRef';
 
 interface Props {
   q: Question;
   onAnswer: (q: Question, selectedOption: string, answerText: string) => void;
   onDismiss: (q: Question) => void;
+  onOpenInsight?: (insightId: number) => void;
+  onOpenLoops?: () => void;
 }
 
 export const QuestionCard = forwardRef<HTMLDivElement, Props>(function QuestionCard(
-  { q, onAnswer, onDismiss },
+  { q, onAnswer, onDismiss, onOpenInsight, onOpenLoops },
   ref,
 ) {
   const [freeText, setFreeText] = useState('');
+  const ctx = parseContextRef(q.context_ref);
+
+  function handleBadgeClick() {
+    if (!ctx.deepLink || ctx.id == null) return;
+    if (ctx.kind === 'insight' && onOpenInsight) onOpenInsight(ctx.id);
+    else if ((ctx.kind === 'loop' || ctx.kind === 'stale-loop') && onOpenLoops) onOpenLoops();
+  }
+
+  const badgeTone =
+    ctx.kind === 'stale-loop'
+      ? 'border-amber-600/60 text-amber-700'
+      : ctx.kind === 'insight'
+        ? 'border-fg text-fg'
+        : 'border-border text-muted';
 
   return (
     <div ref={ref} className="relative pl-4 sm:pl-5 py-4 pr-2">
       <span className="absolute left-0 top-4 bottom-4 w-[2px] bg-fg" aria-hidden />
+
+      {ctx.label && (
+        <div className="mb-1.5">
+          {ctx.deepLink ? (
+            <button
+              type="button"
+              onClick={handleBadgeClick}
+              className={[
+                'inline-flex items-center gap-1 border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em] font-sans hover:bg-panel/70 transition-colors',
+                badgeTone,
+              ].join(' ')}
+              title={
+                ctx.kind === 'insight'
+                  ? 'Open the insight'
+                  : 'Show open loops'
+              }
+            >
+              <span aria-hidden className="font-display not-italic">{ctx.glyph}</span>
+              <span>{ctx.label}</span>
+              <span aria-hidden className="opacity-60">›</span>
+            </button>
+          ) : (
+            <span
+              className={[
+                'inline-flex items-center gap-1 border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em] font-sans',
+                badgeTone,
+              ].join(' ')}
+            >
+              <span aria-hidden className="font-display not-italic">{ctx.glyph}</span>
+              <span>{ctx.label}</span>
+            </span>
+          )}
+        </div>
+      )}
 
       <p className="font-display italic text-[19px] sm:text-[20px] leading-snug text-fg">
         {q.question_text}

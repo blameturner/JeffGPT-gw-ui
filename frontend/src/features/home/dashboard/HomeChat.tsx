@@ -13,16 +13,24 @@ interface Props {
   conversationId?: number | null;
 }
 
+type SearchMode = 'disabled' | 'basic' | 'standard';
+
+const SEARCH_MODES: { value: SearchMode; label: string; title: string }[] = [
+  { value: 'disabled', label: 'Off', title: 'No web search' },
+  { value: 'basic', label: 'Basic', title: 'Lightweight web search' },
+  { value: 'standard', label: 'Standard', title: 'Standard web search' },
+];
+
 export const HomeChat = forwardRef<HomeChatHandle, Props>(function HomeChat({ conversationId }, ref) {
   const { messages, sending, send, attachStream, refresh } = useHomeChat(conversationId);
   const [text, setText] = useState('');
-  const [searchMode, setSearchMode] = useState<'disabled' | 'basic' | 'standard'>('basic');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [searchMode, setSearchMode] = useState<SearchMode>('basic');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({
     attachStream,
-    focusInput: () => inputRef.current?.focus(),
+    focusInput: () => textareaRef.current?.focus(),
     refresh,
   }));
 
@@ -30,16 +38,27 @@ export const HomeChat = forwardRef<HomeChatHandle, Props>(function HomeChat({ co
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [text]);
+
   async function handleSend() {
-    const t = text;
+    const t = text.trim();
+    if (!t || sending) return;
     setText('');
     await send(t, searchMode);
   }
 
   return (
-    <div className="flex h-full flex-col border border-border">
+    <div className="flex h-full flex-col border border-border bg-bg">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-muted">Home chat</div>
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-fg/70" aria-hidden />
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted">Home chat</div>
+        </div>
         <button
           onClick={() => downloadHomeConversation()}
           className="text-[11px] uppercase tracking-[0.14em] text-muted hover:text-fg"
@@ -48,52 +67,89 @@ export const HomeChat = forwardRef<HomeChatHandle, Props>(function HomeChat({ co
         </button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 min-h-0 space-y-2 overflow-y-auto p-3">
-        {messages.length === 0 && (
-          <div className="text-[12px] text-muted">Say hi. Today's digest is already in context.</div>
+      <div ref={scrollRef} className="flex-1 min-h-0 space-y-3 overflow-y-auto px-3 sm:px-4 py-4">
+        {messages.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center text-center px-4">
+            <div className="text-[13px] text-fg/80">Say hi.</div>
+            <div className="mt-1 text-[12px] text-muted">
+              Today's digest is already in context.
+            </div>
+            <div className="mt-4 text-[10px] uppercase tracking-[0.18em] text-muted">
+              Press <kbd className="px-1 py-0.5 border border-border text-[10px]">/</kbd> to focus
+            </div>
+          </div>
+        ) : (
+          messages.map((m) => <ChatMessage key={m.id} m={m} />)
         )}
-        {messages.map((m) => (
-          <ChatMessage key={m.id} m={m} />
-        ))}
       </div>
 
-      <div className="border-t border-border p-2 space-y-2">
-        <div className="flex items-center gap-2">
-          <input
-            ref={inputRef}
-            data-chat-input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Message…"
-            className="flex-1 min-w-0 border border-border bg-transparent px-2 py-2 text-[14px] sm:text-[13px] outline-none focus:border-fg"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void handleSend();
-              }
-            }}
-          />
-          <button
-            disabled={sending || !text.trim()}
-            onClick={() => void handleSend()}
-            className="shrink-0 border border-fg px-3 py-2 text-[12px] uppercase tracking-[0.14em] text-fg hover:bg-fg hover:text-bg disabled:opacity-40"
-          >
-            Send
-          </button>
+      <div className="border-t border-border bg-bg/95 backdrop-blur">
+        <div className="px-3 sm:px-4 pt-2 pb-1 flex items-center gap-2">
+          <span className="text-[9px] uppercase tracking-[0.18em] text-muted font-sans">
+            Search
+          </span>
+          <div className="flex items-center gap-1">
+            {SEARCH_MODES.map((m) => {
+              const active = searchMode === m.value;
+              return (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setSearchMode(m.value)}
+                  title={m.title}
+                  className={[
+                    'text-[11px] font-sans px-2 py-1 rounded border transition-colors flex items-center gap-1.5',
+                    active
+                      ? 'border-fg bg-fg text-bg'
+                      : 'border-border text-muted hover:border-fg hover:text-fg',
+                  ].join(' ')}
+                >
+                  <span
+                    className={[
+                      'w-1.5 h-1.5 rounded-full',
+                      active ? 'bg-bg' : 'bg-border',
+                    ].join(' ')}
+                    aria-hidden
+                  />
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <select
-          value={searchMode}
-          onChange={(e) => setSearchMode(e.target.value as 'disabled' | 'basic' | 'standard')}
-          className="w-full sm:w-auto border border-border bg-transparent px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-muted"
-          aria-label="Search mode"
-        >
-          <option value="disabled">No search</option>
-          <option value="basic">Basic search</option>
-          <option value="standard">Standard search</option>
-        </select>
+
+        <div className="px-3 sm:px-4 pt-1 pb-3">
+          <div className="flex items-end gap-2 border border-border rounded-xl bg-panel/40 focus-within:border-fg transition-colors px-3 py-2 shadow-card">
+            <textarea
+              ref={textareaRef}
+              data-chat-input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend();
+                }
+              }}
+              rows={1}
+              placeholder="Message…"
+              disabled={sending}
+              className="flex-1 bg-transparent resize-none outline-none text-[14px] leading-relaxed placeholder:text-muted disabled:opacity-50 min-h-[1.6em] max-h-[200px] overflow-y-auto"
+            />
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={sending || !text.trim()}
+              className="shrink-0 px-3 py-1.5 rounded-md bg-fg text-bg text-[12px] font-medium tracking-wide hover:bg-fg/85 transition-colors disabled:opacity-40"
+            >
+              {sending ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+          <p className="hidden sm:block text-[10px] uppercase tracking-[0.14em] text-muted font-sans mt-2">
+            Enter to send · Shift+Enter for newline
+          </p>
+        </div>
       </div>
     </div>
   );
 });
-
-

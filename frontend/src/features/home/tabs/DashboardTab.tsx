@@ -83,7 +83,16 @@ export function DashboardTab({ overview, health, refetch }: Props) {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_360px] gap-6 sm:gap-8 px-4 sm:px-8 py-5 sm:py-7">
-        <main className="min-w-0 space-y-8 order-1 lg:order-2">
+        <aside className="space-y-6 order-2 lg:order-1">
+          <SchedulesPanel schedules={schedules} />
+          <WidgetRail overview={overview} refreshSignal={overview} />
+        </aside>
+
+        <aside className="h-[70vh] min-h-[420px] lg:h-[calc(100vh-240px)] lg:min-h-[500px] order-1 lg:order-2">
+          <HomeChat ref={chatRef} conversationId={overview?.home_conversation?.id ?? null} />
+        </aside>
+
+        <main className="min-w-0 space-y-8 order-3 lg:col-span-2 xl:col-span-1">
           {/* Questions sit on a warmer paper tint to read as a separate spread */}
           <div className="rounded-none bg-panel/60 border border-border px-4 sm:px-5 py-4">
             <QuestionsPanel
@@ -100,15 +109,6 @@ export function DashboardTab({ overview, health, refetch }: Props) {
           </div>
           <Feed onOpen={openFeedItem} refreshKey={feedRefreshKey} />
         </main>
-
-        <aside className="space-y-6 order-2 lg:order-1">
-          <SchedulesPanel schedules={schedules} />
-          <WidgetRail overview={overview} refreshSignal={overview} />
-        </aside>
-
-        <aside className="h-[70vh] min-h-[420px] lg:h-[calc(100vh-240px)] lg:min-h-[500px] order-3 lg:col-span-2 xl:col-span-1">
-          <HomeChat ref={chatRef} conversationId={overview?.home_conversation?.id ?? null} />
-        </aside>
       </div>
 
       {digestModal && <DigestModal date={digestModal.date} onClose={() => setDigestModal(null)} />}

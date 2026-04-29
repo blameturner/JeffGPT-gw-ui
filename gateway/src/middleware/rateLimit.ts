@@ -1,10 +1,15 @@
 import type { Context, Next } from 'hono';
+import { getConnInfo } from '@hono/node-server/conninfo';
 
 /**
  * Minimal in-memory fixed-window rate limiter. Suitable for a single-instance
- * LAN deployment (no Redis dep). Keyed by client IP (falls back to a constant
- * when the IP cannot be derived, which fails closed — all anon requests share
- * the same bucket).
+ * LAN deployment (no Redis dep). Keyed by client IP, derived in this order:
+ *   1. X-Forwarded-For (first hop) — set by reverse proxies
+ *   2. X-Real-IP — also reverse-proxy convention
+ *   3. The actual TCP socket remote address — for direct browser → gateway
+ *      connections where no proxy is in front (the typical Docker-published
+ *      port setup). Without this, every direct request shares one global
+ *      bucket and a single noisy client locks everyone out.
  */
 interface Bucket {
   count: number;
@@ -17,11 +22,16 @@ export function rateLimit(opts: { windowMs: number; max: number; name?: string }
 
   return async function rateLimitMw(c: Context, next: Next) {
     const now = Date.now();
-    const ip =
-      c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-      c.req.header('x-real-ip') ||
-      'unknown';
-    const key = `${name}:${ip}`;
+    let ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip');
+    if (!ip) {
+      try {
+        ip = getConnInfo(c).remote.address;
+      } catch {
+        // getConnInfo is only available under the @hono/node-server runtime.
+        // If we ever run somewhere it isn't (tests, edge), fall through.
+      }
+    }
+    const key = `${name}:${ip || 'unknown'}`;
 
     let b = buckets.get(key);
     if (!b || b.resetAt < now) {

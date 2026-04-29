@@ -1,5 +1,4 @@
 // frontend/src/features/home/HomePage.tsx
-import { useEffect, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useOverview } from './hooks/useOverview';
 import { UnhealthyBanner } from './dashboard/UnhealthyBanner';
@@ -19,29 +18,25 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'connectors', label: 'Connectors' },
 ];
 
+const TAB_IDS = new Set<Tab>(TABS.map((t) => t.id));
+
 export function HomePage() {
   const navigate = useNavigate();
   const search = useSearch({ from: '/home' }) as { tab?: Tab } | undefined;
-  const initialTab = (TABS.find((t) => t.id === search?.tab)?.id ?? 'dashboard') as Tab;
-  const [tab, setTab] = useState<Tab>(initialTab);
+  // Derive tab directly from the URL — no local state, no mount-time
+  // self-navigation. The previous version held tab in useState and synced it
+  // back to the URL in a useEffect, which fired a same-URL navigate on every
+  // mount and re-ran the route's beforeLoad (and its setupStatus poll).
+  const tab: Tab = search?.tab && TAB_IDS.has(search.tab) ? search.tab : 'dashboard';
   const { overview, health, loading, refetch } = useOverview();
 
-  useEffect(() => {
-    if (search?.tab !== tab) {
-      navigate({
-        to: '/home',
-        search: { tab: tab === 'dashboard' ? undefined : tab },
-        replace: true,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
-
-  useEffect(() => {
-    const nextTab = (TABS.find((t) => t.id === search?.tab)?.id ?? 'dashboard') as Tab;
-    if (nextTab !== tab) setTab(nextTab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search?.tab]);
+  const setTab = (next: Tab) => {
+    navigate({
+      to: '/home',
+      search: { tab: next === 'dashboard' ? undefined : next },
+      replace: true,
+    });
+  };
 
   const ok = health && health.scheduler_running;
 

@@ -12,16 +12,19 @@ export const Route = createFileRoute('/home')({
         : undefined,
   }),
   beforeLoad: async () => {
+    // Only redirect to /setup on a *successful* "not configured" answer. If
+    // the status endpoint errors (network, 429, 5xx) we trust the existing
+    // session — bouncing a logged-in user to /setup on a transient failure
+    // produces a stuck loop the user can only recover from by restarting the
+    // gateway.
     try {
       const status = await setupStatus();
       if (!status.configured) {
         throw redirect({ to: '/setup' });
       }
     } catch (err) {
-      // Router redirects/not-founds must be re-thrown unchanged
       if ((err as any)?.routerCode) throw err;
       console.error('[home] setup status check failed', err);
-      throw redirect({ to: '/setup' });
     }
     const session = await authClient.getSession();
     if (!session.data?.user) {

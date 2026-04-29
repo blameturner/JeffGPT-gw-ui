@@ -55,8 +55,15 @@ app.use(
   '/api/auth/*',
   rateLimit({ windowMs: 15 * 60 * 1000, max: 20, name: 'auth' }),
 );
-app.use('/api/setup/*', rateLimit({ windowMs: 60 * 60 * 1000, max: 10, name: 'setup' }));
-app.use('/api/setup', rateLimit({ windowMs: 60 * 60 * 1000, max: 10, name: 'setup' }));
+// Only the setup mutation (POST /api/setup) needs the tight anti-spam bucket.
+// GET /api/setup/status is polled by every route guard on every navigation, so
+// it must use the normal /api/* bucket — otherwise a logged-in user gets 429s
+// after ~10 navigations and the SPA bounces them to /setup until the gateway
+// restarts.
+const setupMutationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, name: 'setup' });
+app.use('/api/setup', async (c, next) =>
+  c.req.method === 'POST' ? setupMutationLimiter(c, next) : next(),
+);
 app.use('/api/*', rateLimit({ windowMs: 60 * 1000, max: 240, name: 'api' }));
 
 app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));

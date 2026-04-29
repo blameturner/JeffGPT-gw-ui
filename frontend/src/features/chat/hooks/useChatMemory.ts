@@ -81,6 +81,11 @@ export function useChatMemory(conversationId: number | null): ChatMemoryState {
   const update = useCallback(
     async (id: number, body: UpdateMemoryBody) => {
       if (conversationId == null) return;
+      // Guard against callers passing undefined/null ids (e.g. an item that
+      // hasn't fully hydrated, or whose id field arrived under a different
+      // casing). Without this guard we end up firing PATCH .../memory/undefined
+      // requests in a loop.
+      if (id == null || !Number.isFinite(id)) return;
       const before = items;
       setItems((prev) =>
         prev.map((it) => (it.Id === id ? ({ ...it, ...body } as ChatMemoryItem) : it)),
@@ -116,7 +121,9 @@ export function useChatMemory(conversationId: number | null): ChatMemoryState {
 
   const acceptAllProposed = useCallback(async () => {
     if (conversationId == null) return;
-    const proposed = items.filter((it) => it.status === 'proposed');
+    const proposed = items.filter(
+      (it) => it.status === 'proposed' && it.Id != null && Number.isFinite(it.Id),
+    );
     if (proposed.length === 0) return;
     const before = items;
     setItems((prev) =>

@@ -32,6 +32,9 @@ interface ComposerDockProps {
   onAttach?: (files: File[]) => void;
   attachmentPreview?: ReactNode;
   searchSlot?: ReactNode;
+  composerStartSlot?: ReactNode;
+  composerEndSlot?: ReactNode;
+  onComposerKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => boolean | void;
 }
 
 export function ComposerDock({
@@ -53,6 +56,9 @@ export function ComposerDock({
   onAttach,
   attachmentPreview,
   searchSlot,
+  composerStartSlot,
+  composerEndSlot,
+  onComposerKeyDown,
 }: ComposerDockProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -66,6 +72,10 @@ export function ComposerDock({
   }, [value]);
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (onComposerKeyDown) {
+      const handled = onComposerKeyDown(e);
+      if (handled) return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (!disabled && !sending && value.trim()) onSend();
@@ -193,7 +203,7 @@ export function ComposerDock({
               <circle cx="19" cy="12" r="1.5" />
             </svg>
           </button>
-          {onAttach && (
+          {onAttach && !composerStartSlot && (
             <>
               <button
                 type="button"
@@ -212,6 +222,7 @@ export function ComposerDock({
               />
             </>
           )}
+          {composerStartSlot}
           <textarea
             ref={textareaRef}
             value={value}
@@ -222,6 +233,7 @@ export function ComposerDock({
             disabled={disabled || sending}
             className="flex-1 bg-transparent resize-none outline-none text-[15px] leading-relaxed placeholder:text-muted disabled:opacity-50 min-h-[1.6em] max-h-[220px] overflow-y-auto"
           />
+          {composerEndSlot}
           {sending && onStop ? (
             <button
               type="button"

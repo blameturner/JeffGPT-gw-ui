@@ -23,6 +23,10 @@ const chatSchema = z.object({
   search_mode: z.enum(['disabled', 'basic', 'standard']).optional(),
   search_consent_confirmed: z.boolean().optional(),
   response_style: z.string().optional(),
+  polish_pass: z.boolean().optional(),
+  strict_grounding: z.boolean().optional(),
+  ask_back: z.boolean().optional(),
+  attached_urls: z.array(z.string().url()).max(20).optional(),
 });
 
 chatRoute.post('/', async (c) => {

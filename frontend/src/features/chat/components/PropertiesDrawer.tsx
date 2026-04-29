@@ -1,5 +1,13 @@
+import { useEffect, useState } from 'react';
 import type { ConversationSummary } from '../../../api/types/ConversationSummary';
 import type { SearchMode } from '../../../api/types/SearchMode';
+import type { StyleSurface } from '../../../api/types/StyleSurface';
+import type { LlmModel } from '../../../api/types/LlmModel';
+import type { Conversation } from '../../../api/types/Conversation';
+import type { ConversationProperties } from '../../../api/types/ConversationProperties';
+import type { ConversationPropertiesState } from '../hooks/useConversationProperties';
+import type { ChatMemoryState } from '../hooks/useChatMemory';
+import { ChatMemorySection } from './ChatMemorySection';
 
 const SEARCH_MODE_LABEL: Record<SearchMode, string> = {
   standard: 'standard',
@@ -9,12 +17,8 @@ const SEARCH_MODE_LABEL: Record<SearchMode, string> = {
 
 interface Props {
   activeId: number | null;
-  model: string;
-  ragEnabled: boolean;
-  knowledgeEnabled: boolean;
+  activeConversation: Conversation | null;
   searchMode: SearchMode;
-  grounding: boolean;
-  toggleGrounding: () => void;
   stats: ConversationSummary | null;
   loadingStats: boolean;
   refreshStats: () => void;
@@ -26,16 +30,17 @@ interface Props {
   deleteChat: () => void;
   activeTitle: string;
   onClose: () => void;
+  properties: ConversationPropertiesState;
+  memory: ChatMemoryState;
+  styles?: StyleSurface | null;
+  models: LlmModel[];
+  scrollToMemoryToken?: number;
 }
 
 export function PropertiesDrawer({
   activeId,
-  model,
-  ragEnabled,
-  knowledgeEnabled,
+  activeConversation,
   searchMode,
-  grounding,
-  toggleGrounding,
   stats,
   loadingStats,
   refreshStats,
@@ -47,7 +52,22 @@ export function PropertiesDrawer({
   deleteChat,
   activeTitle,
   onClose,
+  properties,
+  memory,
+  styles,
+  models,
+  scrollToMemoryToken,
 }: Props) {
+  const v = properties.values;
+  const disabled = activeId == null;
+
+  const [memoryRef, setMemoryRef] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (scrollToMemoryToken != null && memoryRef) {
+      memoryRef.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [scrollToMemoryToken, memoryRef]);
+
   return (
     <>
       <button
@@ -63,24 +83,36 @@ export function PropertiesDrawer({
             <h3 className="font-display text-lg font-semibold tracking-tightest truncate">
               Properties
             </h3>
+            {properties.savedAt && !properties.saving && (
+              <p className="text-[9px] uppercase tracking-[0.14em] text-muted mt-0.5">Saved</p>
+            )}
+            {properties.saving && (
+              <p className="text-[9px] uppercase tracking-[0.14em] text-muted mt-0.5">Saving…</p>
+            )}
+            {properties.error && (
+              <p className="text-[9px] uppercase tracking-[0.14em] text-red-600 mt-0.5">
+                {properties.error}
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}
             className="shrink-0 w-9 h-9 -mr-2 rounded-md border border-border text-fg hover:bg-panelHi flex items-center justify-center text-xl leading-none"
             aria-label="Close properties"
           >
-            x
+            ×
           </button>
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 text-sm">
+          {/* Title section */}
           <section>
-            <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">Title</h4>
+            <Label>Title</Label>
             <input
               value={renameTitle}
               onChange={(e) => setRenameTitle(e.target.value)}
               placeholder={activeTitle || 'Untitled'}
-              disabled={activeId == null || renaming}
+              disabled={disabled || renaming}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
@@ -91,17 +123,13 @@ export function PropertiesDrawer({
             />
             <div className="flex items-center justify-between mt-2">
               <p className="text-[10px] font-sans text-muted">
-                {renameError ? (
-                  <span className="text-red-600">{renameError}</span>
-                ) : (
-                  'Enter to save'
-                )}
+                {renameError ? <span className="text-red-600">{renameError}</span> : 'Enter to save'}
               </p>
               <button
                 type="button"
                 onClick={saveRename}
                 disabled={
-                  activeId == null ||
+                  disabled ||
                   renaming ||
                   !renameTitle.trim() ||
                   renameTitle.trim() === activeTitle
@@ -113,36 +141,135 @@ export function PropertiesDrawer({
             </div>
           </section>
 
+          {/* System note */}
           <section>
-            <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">Settings</h4>
+            <Label>System note</Label>
+            <textarea
+              value={(v.system_note ?? '') as string}
+              onChange={(e) => properties.setField('system_note', e.target.value)}
+              onBlur={() => void properties.flush()}
+              maxLength={2000}
+              rows={3}
+              disabled={disabled}
+              placeholder="Strategic work for Altitude Group, peer-mode, push back hard."
+              className="w-full bg-bg border border-border rounded-md px-3 py-2 text-[13px] focus:outline-none focus:border-fg disabled:opacity-50 resize-none"
+            />
+            <Help>
+              Sticky context prepended to every message in this chat — what this chat is for, what tone you want, anything you'd otherwise restate every turn.
+            </Help>
+          </section>
+
+          {/* Defaults */}
+          <section className="space-y-3">
+            <Label>Defaults</Label>
+
+            <SelectField
+              label="Default style"
+              value={(v.default_response_style ?? '') as string}
+              disabled={disabled}
+              onChange={(val) =>
+                properties.setField('default_response_style', val || null)
+              }
+              options={[
+                { value: '', label: 'Use system default' },
+                ...(styles?.styles?.map((s) => ({
+                  value: s.key,
+                  label: s.label ?? s.key,
+                })) ?? []),
+              ]}
+            />
+
+            <SelectField
+              label="Default model"
+              value={v.model ?? ''}
+              disabled={disabled}
+              onChange={(val) => properties.setField('model', val)}
+              options={models.map((m) => ({ value: m.name, label: m.name }))}
+            />
+
+            <Toggle
+              label="Polish pass default"
+              description="Run a critique→revise pass before returning each reply."
+              checked={!!v.polish_pass_default}
+              disabled={disabled}
+              onToggle={() =>
+                properties.setField('polish_pass_default', !v.polish_pass_default)
+              }
+            />
+            <Toggle
+              label="Strict grounding"
+              description="Force the model to cite a source from your knowledge base or web search, or admit it can't."
+              checked={!!v.strict_grounding_default}
+              disabled={disabled}
+              onToggle={() =>
+                properties.setField('strict_grounding_default', !v.strict_grounding_default)
+              }
+            />
+            <Toggle
+              label="Ask back on ambiguity"
+              description="Model asks one clarifying question before answering anything ambiguous."
+              checked={!!v.ask_back_default}
+              disabled={disabled}
+              onToggle={() => properties.setField('ask_back_default', !v.ask_back_default)}
+            />
+            <Toggle
+              label="Contextual grounding"
+              description="Pull current facts when the model spots real-world entities."
+              checked={v.contextual_grounding_enabled !== false}
+              disabled={disabled}
+              onToggle={() =>
+                properties.setField(
+                  'contextual_grounding_enabled',
+                  !(v.contextual_grounding_enabled !== false),
+                )
+              }
+            />
+          </section>
+
+          {/* Memory budgets */}
+          <section className="space-y-3">
+            <Label>Memory tuning</Label>
+            <NumberField
+              label="Extraction cadence (turns)"
+              value={v.memory_extract_every_n_turns ?? 6}
+              min={0}
+              max={50}
+              disabled={disabled}
+              help="Run structured fact extraction every N turns. Set to 0 to disable auto-extraction."
+              onChange={(n) => properties.setField('memory_extract_every_n_turns', n)}
+            />
+            <NumberField
+              label="Memory token budget"
+              value={v.memory_token_budget ?? 800}
+              min={0}
+              max={8000}
+              disabled={disabled}
+              help="How much of each prompt is spent on pinned memory."
+              onChange={(n) => properties.setField('memory_token_budget', n)}
+            />
+          </section>
+
+          {/* Chat memory */}
+          <div ref={(el) => setMemoryRef(el)}>
+            <ChatMemorySection memory={memory} disabled={disabled} />
+          </div>
+
+          {/* Sticky reads */}
+          <section>
+            <Label>Sticky context</Label>
             <dl className="grid grid-cols-2 gap-y-1.5 text-[12px] font-sans">
-              <dt className="text-muted">Type of Jeff</dt>
-              <dd className="text-right truncate">{model || '\u2014'}</dd>
-              <dt className="text-muted">Memory</dt>
+              <dt className="text-muted">Memory (RAG)</dt>
               <dd className="text-right">
-                {activeId == null
-                  ? ragEnabled ? 'on (first turn)' : 'off'
-                  : (stats?.conversation as any)?.rag_enabled ? 'on' : 'sticky'}
+                {activeConversation?.rag_enabled ? 'on' : 'off'}
               </dd>
-              <dt className="text-muted">Knowledge</dt>
+              <dt className="text-muted">Knowledge graph</dt>
               <dd className="text-right">
-                {activeId == null ? (knowledgeEnabled ? 'on (first turn)' : 'off') : 'sticky'}
+                {activeConversation?.knowledge_enabled ? 'on' : 'off'}
               </dd>
               <dt className="text-muted">Search</dt>
               <dd className="text-right">{SEARCH_MODE_LABEL[searchMode]}</dd>
             </dl>
-            <p className="text-[10px] font-sans text-muted mt-2 leading-relaxed">
-              Memory / Knowledge are captured when the chat is first created.
-              Change search mode from the composer.
-            </p>
-
-            <ToggleSwitch
-              label="Contextual grounding"
-              description="Pull current facts when the model spots real-world entities"
-              checked={grounding}
-              disabled={activeId == null}
-              onToggle={toggleGrounding}
-            />
+            <Help>RAG/Knowledge are captured when the chat is first created. Change search mode from the composer.</Help>
           </section>
 
           <StatsSection
@@ -154,7 +281,7 @@ export function PropertiesDrawer({
 
           {activeId != null && (
             <section>
-              <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">Danger zone</h4>
+              <Label>Danger zone</Label>
               <button
                 type="button"
                 onClick={deleteChat}
@@ -164,102 +291,25 @@ export function PropertiesDrawer({
               </button>
             </section>
           )}
-
-          {stats && stats.observations.length > 0 && (
-            <CollapsibleList
-              title={`Observations \u00b7 ${stats.observation_count}`}
-              items={stats.observations}
-              renderItem={(o) => (
-                <li key={o.Id} className="border border-border rounded-md p-3 bg-bg">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <p className="font-medium text-[13px] leading-snug">{o.title}</p>
-                    <span
-                      className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
-                        o.confidence === 'high'
-                          ? 'border-fg text-fg'
-                          : o.confidence === 'medium'
-                            ? 'border-muted text-muted'
-                            : 'border-border text-muted'
-                      }`}
-                    >
-                      {o.confidence}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-muted leading-relaxed">{o.content}</p>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    <span className="text-[10px] font-sans text-muted">
-                      {o.type} \u00b7 {o.domain}
-                    </span>
-                    {o.agent_name && (
-                      <span className="text-[10px] font-sans text-muted">
-                        \u00b7 {o.agent_name}
-                      </span>
-                    )}
-                  </div>
-                </li>
-              )}
-            />
-          )}
-
-          {stats && stats.runs.length > 0 && (
-            <CollapsibleList
-              title={`Agent runs \u00b7 ${stats.run_count}`}
-              items={stats.runs}
-              renderItem={(r) => (
-                <li key={r.Id} className="border border-border rounded-md p-3 bg-bg">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <p className="font-medium text-[13px]">{r.agent_name}</p>
-                    <span className="text-[10px] font-sans text-muted">{r.status}</span>
-                  </div>
-                  {r.summary && (
-                    <p className="text-[11px] text-muted mb-2 leading-relaxed">{r.summary}</p>
-                  )}
-                  <dl className="grid grid-cols-3 gap-x-3 gap-y-0.5 text-[10px] font-sans text-muted">
-                    <dt>in</dt>
-                    <dd className="col-span-2 text-fg">{(r.tokens_input ?? 0).toLocaleString()}</dd>
-                    <dt>out</dt>
-                    <dd className="col-span-2 text-fg">{(r.tokens_output ?? 0).toLocaleString()}</dd>
-                    {r.context_tokens != null && (
-                      <>
-                        <dt>ctx</dt>
-                        <dd className="col-span-2 text-fg">{r.context_tokens.toLocaleString()}</dd>
-                      </>
-                    )}
-                    <dt>time</dt>
-                    <dd className="col-span-2 text-fg">{(r.duration_seconds ?? 0).toFixed(2)}s</dd>
-                    {r.model_name && (
-                      <>
-                        <dt>model</dt>
-                        <dd className="col-span-2 text-fg truncate">{r.model_name}</dd>
-                      </>
-                    )}
-                  </dl>
-                </li>
-              )}
-            />
-          )}
-
-          {stats && stats.outputs.length > 0 && (
-            <CollapsibleList
-              title={`Outputs \u00b7 ${stats.output_count}`}
-              items={stats.outputs}
-              renderItem={(o) => (
-                <li key={o.Id} className="border border-border rounded-md p-3 bg-bg">
-                  <p className="text-[10px] uppercase tracking-wider text-muted mb-1">
-                    {o.agent_name ?? `run #${o.run_id}`}
-                  </p>
-                  <p className="text-[11px] leading-relaxed whitespace-pre-wrap">{o.full_text}</p>
-                </li>
-              )}
-            />
-          )}
         </div>
       </aside>
     </>
   );
 }
 
-function ToggleSwitch({
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted mb-2">{children}</h4>
+  );
+}
+
+function Help({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-sans text-muted mt-2 leading-relaxed">{children}</p>
+  );
+}
+
+function Toggle({
   label,
   description,
   checked,
@@ -273,10 +323,10 @@ function ToggleSwitch({
   onToggle: () => void;
 }) {
   return (
-    <label className="mt-3 flex items-center justify-between gap-2 text-[11px] font-sans text-fg cursor-pointer select-none">
-      <span>
+    <label className="flex items-center justify-between gap-2 text-[11px] font-sans text-fg cursor-pointer select-none">
+      <span className="min-w-0">
         <span className="text-muted uppercase tracking-[0.14em] text-[10px] block">{label}</span>
-        <span className="text-[10px] text-muted">{description}</span>
+        <span className="text-[10px] text-muted block">{description}</span>
       </span>
       <button
         type="button"
@@ -300,6 +350,78 @@ function ToggleSwitch({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <p className="text-muted uppercase tracking-[0.14em] text-[10px] mb-1 font-sans">{label}</p>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-bg border border-border rounded-md px-2 py-1.5 text-[12px] focus:outline-none focus:border-fg disabled:opacity-50"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  min,
+  max,
+  disabled,
+  help,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  disabled?: boolean;
+  help?: string;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div>
+      <p className="text-muted uppercase tracking-[0.14em] text-[10px] mb-1 font-sans">{label}</p>
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        step={1}
+        disabled={disabled}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          if (Number.isFinite(n)) {
+            onChange(Math.max(min, Math.min(max, Math.round(n))));
+          }
+        }}
+        className="w-full bg-bg border border-border rounded-md px-2 py-1.5 text-[12px] focus:outline-none focus:border-fg disabled:opacity-50"
+      />
+      {help && <p className="text-[10px] font-sans text-muted mt-1 leading-relaxed">{help}</p>}
+    </div>
+  );
+}
+
 function StatsSection({
   activeId,
   stats,
@@ -312,10 +434,10 @@ function StatsSection({
   refreshStats: () => void;
 }) {
   return (
-    <details open className="group">
+    <details className="group">
       <summary className="flex items-center justify-between mb-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
         <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted">Stats</h4>
-        <span className="text-muted text-[10px] transition-transform group-open:rotate-90">\u25b8</span>
+        <span className="text-muted text-[10px] transition-transform group-open:rotate-90">▸</span>
       </summary>
       <div className="flex justify-end -mt-1 mb-2">
         <button
@@ -332,86 +454,21 @@ function StatsSection({
       ) : stats == null ? (
         <p className="text-[11px] text-muted font-sans">Tap refresh to load.</p>
       ) : (
-        <>
-          <dl className="grid grid-cols-2 gap-y-1 text-[11px] font-sans">
-            <dt className="text-muted">messages</dt>
-            <dd className="text-right">{stats.message_count}</dd>
-            <dt className="text-muted">runs</dt>
-            <dd className="text-right">{stats.run_count}</dd>
-            <dt className="text-muted">observations</dt>
-            <dd className="text-right">{stats.observation_count}</dd>
-            <dt className="text-muted">tasks</dt>
-            <dd className="text-right">{stats.task_count}</dd>
-
-            <dt className="text-muted mt-2 pt-2 border-t border-border">tokens in</dt>
-            <dd className="text-right mt-2 pt-2 border-t border-border">
-              {stats.tokens_input.toLocaleString()}
-            </dd>
-            <dt className="text-muted">tokens out</dt>
-            <dd className="text-right">{stats.tokens_output.toLocaleString()}</dd>
-            <dt className="text-muted font-semibold">total</dt>
-            <dd className="text-right font-semibold">{stats.tokens_total.toLocaleString()}</dd>
-
-            {stats.run_duration_seconds > 0 && (
-              <>
-                <dt className="text-muted mt-2 pt-2 border-t border-border">run time</dt>
-                <dd className="text-right mt-2 pt-2 border-t border-border">
-                  {stats.run_duration_seconds.toFixed(2)}s
-                </dd>
-              </>
-            )}
-          </dl>
-
-          {stats.models_used.length > 0 && (
-            <div className="mt-3">
-              <p className="text-[9px] uppercase tracking-[0.16em] text-muted mb-1">Models</p>
-              <div className="flex flex-wrap gap-1">
-                {stats.models_used.map((m) => (
-                  <span key={m} className="text-[10px] font-sans px-1.5 py-0.5 rounded border border-border bg-bg">
-                    {m}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {stats.themes.length > 0 && (
-            <div className="mt-2">
-              <p className="text-[9px] uppercase tracking-[0.16em] text-muted mb-1">Themes</p>
-              <div className="flex flex-wrap gap-1">
-                {stats.themes.map((t) => (
-                  <span key={t} className="text-[10px] font-sans px-1.5 py-0.5 rounded-full border border-border bg-bg">
-                    {t}
-                    {stats.theme_counts[t] != null && (
-                      <span className="text-muted ml-1">\u00b7{stats.theme_counts[t]}</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+        <dl className="grid grid-cols-2 gap-y-1 text-[11px] font-sans">
+          <dt className="text-muted">messages</dt>
+          <dd className="text-right">{stats.message_count}</dd>
+          <dt className="text-muted">runs</dt>
+          <dd className="text-right">{stats.run_count}</dd>
+          <dt className="text-muted">tokens in</dt>
+          <dd className="text-right">{stats.tokens_input.toLocaleString()}</dd>
+          <dt className="text-muted">tokens out</dt>
+          <dd className="text-right">{stats.tokens_output.toLocaleString()}</dd>
+          <dt className="text-muted font-semibold">total</dt>
+          <dd className="text-right font-semibold">{stats.tokens_total.toLocaleString()}</dd>
+        </dl>
       )}
     </details>
   );
 }
 
-function CollapsibleList<T>({
-  title,
-  items,
-  renderItem,
-}: {
-  title: string;
-  items: T[];
-  renderItem: (item: T) => React.ReactNode;
-}) {
-  return (
-    <details className="group">
-      <summary className="flex items-center justify-between mb-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-        <h4 className="text-[10px] uppercase tracking-[0.18em] text-muted">{title}</h4>
-        <span className="text-muted text-[10px] transition-transform group-open:rotate-90">\u25b8</span>
-      </summary>
-      <ul className="space-y-3">{items.map(renderItem)}</ul>
-    </details>
-  );
-}
+export type { ConversationProperties };

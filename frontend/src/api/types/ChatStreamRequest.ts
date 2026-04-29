@@ -13,4 +13,8 @@ export interface ChatStreamRequest {
   search_mode?: SearchMode;
   search_consent_confirmed?: boolean;
   response_style?: string;
+  polish_pass?: boolean;
+  strict_grounding?: boolean;
+  ask_back?: boolean;
+  attached_urls?: string[];
 }

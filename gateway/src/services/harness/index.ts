@@ -15,6 +15,13 @@ export { listConversations } from './endpoints/listConversations.js';
 export { getConversationMessages } from './endpoints/getConversationMessages.js';
 export { getConversationSummary } from './endpoints/getConversationSummary.js';
 export { updateConversation } from './endpoints/updateConversation.js';
+export {
+  listMemoryItems,
+  createMemoryItem,
+  updateMemoryItem,
+  deleteMemoryItem,
+  extractMemory,
+} from './endpoints/listMemoryItems.js';
 export { reloadScheduler } from './endpoints/reloadScheduler.js';
 export { getUsageStats } from './endpoints/getUsageStats.js';
 export { listCodebases } from './endpoints/listCodebases.js';

@@ -4,7 +4,7 @@ import { HARNESS_CONVERSATIONS_TIMEOUT_MS } from '../../../constants/timeouts/HA
 export function updateConversation(
   conversationId: number,
   orgId: number,
-  body: { title?: string; contextual_grounding_enabled?: boolean; deleted_at?: string },
+  body: Record<string, unknown>,
 ): Promise<Response> {
   return harnessClient.patch(
     `/conversations/${conversationId}?org_id=${orgId}`,

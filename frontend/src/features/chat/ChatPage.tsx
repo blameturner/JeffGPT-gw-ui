@@ -1,10 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ChatBubble } from '../../components/chat/ChatBubble';
 import { ComposerDock } from '../../components/ComposerDock';
 import { Sheet } from '../../components/Sheet';
 import { styleLabel } from '../../lib/styles/styleLabel';
-import { patchConversation } from '../../api/chat/patchConversation';
 import { useWasRecentlyHidden } from '../../hooks/useWasRecentlyHidden';
 import { SidebarBody } from './SidebarBody';
 import { ChatHeader } from './components/ChatHeader';
@@ -15,7 +14,13 @@ import { useChatConfig } from './hooks/useChatConfig';
 import { useConversations } from './hooks/useConversations';
 import { useChat } from './hooks/useChat';
 import { useStreamRecovery } from './hooks/useStreamRecovery';
+import { useChatMemory } from './hooks/useChatMemory';
+import { useConversationProperties } from './hooks/useConversationProperties';
 import { loadSearchMode, saveSearchMode } from './lib/searchModeStorage';
+import { SavedFragmentsMenu } from './components/SavedFragmentsMenu';
+import { AttachContextMenu, AttachmentChips } from './components/AttachContextMenu';
+import { MessageActions } from './components/MessageActions';
+import type { SavedFragment } from '../../api/types/SavedFragment';
 
 const EMPTY_STATE_PROMPTS = [
   'Summarise the last week of my work',
@@ -43,6 +48,9 @@ export function ChatPage() {
     searchMode: config.searchMode,
     ragEnabled: config.ragEnabled,
     knowledgeEnabled: config.knowledgeEnabled,
+    polishPass: config.polishPass,
+    getAttachedUrls: () => config.attachedUrls,
+    clearAttachments: config.clearAttachments,
     setActiveId: convs.setActiveId,
     setConversations: convs.setConversations,
     setConversationTopics: convs.setConversationTopics,
@@ -84,17 +92,43 @@ export function ChatPage() {
     }
   }, [convs.stats]);
 
-  async function toggleGrounding() {
-    if (convs.activeId == null) return;
-    const next = !config.grounding;
-    config.setGrounding(next);
-    try {
-      await patchConversation(convs.activeId, { contextual_grounding_enabled: next });
-    } catch (err) {
-      config.setGrounding(!next);
-      chat.setError((err as Error)?.message ?? 'Failed to update grounding');
-    }
-  }
+  const properties = useConversationProperties(
+    convs.activeId,
+    convs.activeConversation,
+    (patch) => {
+      // Reflect patched fields into the local conversations list so subsequent reads see them.
+      if (convs.activeId == null) return;
+      convs.setConversations((prev) =>
+        prev.map((c) =>
+          c.Id === convs.activeId ? { ...c, ...patch } : c,
+        ),
+      );
+      if ('contextual_grounding_enabled' in patch && patch.contextual_grounding_enabled != null) {
+        config.setGrounding(patch.contextual_grounding_enabled);
+      }
+      if ('default_response_style' in patch && patch.default_response_style) {
+        config.setStyleKey(patch.default_response_style);
+      }
+      if ('model' in patch && patch.model) {
+        config.setModel(patch.model);
+      }
+      if ('polish_pass_default' in patch && patch.polish_pass_default != null) {
+        config.setPolishPass(patch.polish_pass_default);
+      }
+    },
+  );
+
+  const memory = useChatMemory(convs.activeId);
+
+  // Apply per-conversation defaults when the conversation changes.
+  useEffect(() => {
+    const c = convs.activeConversation;
+    if (!c) return;
+    if (c.polish_pass_default != null) config.setPolishPass(c.polish_pass_default);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convs.activeId]);
+
+  const [memoryFocusToken, setMemoryFocusToken] = useState<number | undefined>(undefined);
 
   const { scrollRef, isAtBottom, scrollToBottom } = useAutoScrollToBottom(chat.messages);
 
@@ -219,7 +253,7 @@ export function ChatPage() {
               </div>
             ) : (
               chat.messages.map((m) => (
-                <div key={m.id} className="space-y-1">
+                <div key={m.id} className="group relative space-y-1">
                   <ChatBubble
                     message={m}
                     onConsentRun={handleConsentRun}
@@ -252,12 +286,58 @@ export function ChatPage() {
                         : undefined
                     }
                   />
+                  <MessageActions
+                    message={m}
+                    sending={chat.sending}
+                    memory={memory}
+                    onRefine={(prompt) => void chat.send(prompt)}
+                    onReroll={() => {
+                      if (!m.sourceUserText) return;
+                      chat.setMessages((ms) => {
+                        const idx = ms.findIndex((x) => x.id === m.id);
+                        if (idx < 0) return ms;
+                        const prev = ms[idx - 1];
+                        const toDrop = new Set([m.id]);
+                        if (prev?.role === 'user') toDrop.add(prev.id);
+                        return ms.filter((x) => !toDrop.has(x.id));
+                      });
+                      void chat.send(m.sourceUserText);
+                    }}
+                    onFork={() => {
+                      // Lightweight fork: copy content of this message to a new chat as the input.
+                      convs.newChat(newChatOpts);
+                      chat.setInput(`Continuing from a previous chat:\n\n${m.content}`);
+                    }}
+                    onPin={(body) => {
+                      void memory.add({
+                        category: body.category,
+                        text: body.text,
+                        pinned: body.pinned,
+                        status: 'active',
+                      });
+                    }}
+                  />
                   {m.role === 'assistant' && m.status === 'complete' && m.responseStyle && (
                     <div className="flex justify-start">
                       <span className="text-[9px] font-sans uppercase tracking-[0.14em] text-muted pl-5 inline-flex items-center gap-1">
                         <span className="w-1 h-1 rounded-full bg-fg/50" />
                         {styleLabel(m.responseStyle)}
                       </span>
+                    </div>
+                  )}
+                  {m.role === 'assistant' && m.status === 'complete' && memory.items.some((it) => it.pinned && it.status === 'active') && (
+                    <div className="flex justify-start">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          convs.setDrawerOpen(true);
+                          setMemoryFocusToken(Date.now());
+                        }}
+                        className="text-[9px] font-sans uppercase tracking-[0.14em] text-muted hover:text-fg pl-5 inline-flex items-center gap-1"
+                        title="Open chat memory"
+                      >
+                        📌 memory · {memory.items.filter((it) => it.pinned && it.status === 'active').length} item{memory.items.filter((it) => it.pinned && it.status === 'active').length === 1 ? '' : 's'} pinned
+                      </button>
                     </div>
                   )}
                   {m.role === 'assistant' && m.status === 'complete' && m.contextChars != null && (
@@ -344,6 +424,54 @@ export function ChatPage() {
               onChange={changeSearchMode}
             />
           }
+          composerStartSlot={
+            <AttachContextMenu
+              attachedFiles={config.attachedFiles}
+              attachedUrls={config.attachedUrls}
+              onAddFiles={(f) => config.setAttachedFiles([...config.attachedFiles, ...f])}
+              onAddUrl={(u) => config.setAttachedUrls([...config.attachedUrls, u])}
+              onRemoveFile={(i) =>
+                config.setAttachedFiles(config.attachedFiles.filter((_, idx) => idx !== i))
+              }
+              onRemoveUrl={(i) =>
+                config.setAttachedUrls(config.attachedUrls.filter((_, idx) => idx !== i))
+              }
+            />
+          }
+          composerEndSlot={
+            <SavedFragmentsMenu
+              fragments={(properties.values.saved_fragments_json ?? []) as SavedFragment[]}
+              onInsert={(text) => chat.setInput(chat.input ? `${chat.input}\n${text}` : text)}
+              onAdd={(frag) => {
+                const next = [
+                  ...((properties.values.saved_fragments_json ?? []) as SavedFragment[]),
+                  frag,
+                ];
+                properties.setField('saved_fragments_json', next);
+              }}
+              disabled={convs.activeId == null}
+            />
+          }
+          onComposerKeyDown={(e) => {
+            if (e.key === 'Escape' && (config.attachedFiles.length || config.attachedUrls.length)) {
+              e.preventDefault();
+              config.clearAttachments();
+              return true;
+            }
+            return false;
+          }}
+          attachmentPreview={
+            <AttachmentChips
+              attachedFiles={config.attachedFiles}
+              attachedUrls={config.attachedUrls}
+              onRemoveFile={(i) =>
+                config.setAttachedFiles(config.attachedFiles.filter((_, idx) => idx !== i))
+              }
+              onRemoveUrl={(i) =>
+                config.setAttachedUrls(config.attachedUrls.filter((_, idx) => idx !== i))
+              }
+            />
+          }
         />
       </main>
 
@@ -351,12 +479,12 @@ export function ChatPage() {
       {convs.drawerOpen && (
         <PropertiesDrawer
           activeId={convs.activeId}
-          model={config.model}
-          ragEnabled={config.ragEnabled}
-          knowledgeEnabled={config.knowledgeEnabled}
+          activeConversation={convs.activeConversation}
           searchMode={config.searchMode}
-          grounding={config.grounding}
-          toggleGrounding={toggleGrounding}
+          properties={properties}
+          memory={memory}
+          styles={config.chatStyles}
+          models={config.models}
           stats={convs.stats}
           loadingStats={convs.loadingStats}
           refreshStats={() => void convs.refreshStats()}
@@ -368,6 +496,7 @@ export function ChatPage() {
           deleteChat={() => void convs.deleteChat(newChatOpts)}
           activeTitle={convs.activeConversation?.title ?? ''}
           onClose={() => convs.setDrawerOpen(false)}
+          scrollToMemoryToken={memoryFocusToken}
         />
       )}
     </div>

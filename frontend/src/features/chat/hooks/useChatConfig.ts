@@ -27,6 +27,15 @@ export interface ChatConfig {
   grounding: boolean;
   setGrounding: (v: boolean) => void;
 
+  polishPass: boolean;
+  setPolishPass: (v: boolean) => void;
+
+  attachedUrls: string[];
+  setAttachedUrls: (urls: string[]) => void;
+  attachedFiles: File[];
+  setAttachedFiles: (files: File[]) => void;
+  clearAttachments: () => void;
+
   buildToggles: (activeId: number | null) => ComposerToggle[];
 }
 
@@ -43,6 +52,15 @@ export function useChatConfig(): ChatConfig {
   const [searchMode, setSearchMode] = useState<SearchMode>(SEARCH_MODE_DEFAULT);
 
   const [grounding, setGrounding] = useState(true);
+  const [polishPass, setPolishPass] = useState(false);
+
+  const [attachedUrls, setAttachedUrls] = useState<string[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+
+  function clearAttachments() {
+    setAttachedUrls([]);
+    setAttachedFiles([]);
+  }
 
   function buildToggles(activeId: number | null): ComposerToggle[] {
     return [
@@ -68,6 +86,13 @@ export function useChatConfig(): ChatConfig {
             : 'Extract entities and write concept edges to the knowledge graph',
         onToggle: () => setKnowledgeEnabled((v) => !v),
       },
+      {
+        key: 'polish',
+        label: 'Polish',
+        active: polishPass,
+        title: 'Run a critique→revise pass before returning the reply',
+        onToggle: () => setPolishPass(!polishPass),
+      },
     ];
   }
 
@@ -77,6 +102,8 @@ export function useChatConfig(): ChatConfig {
     ragEnabled, setRagEnabled, knowledgeEnabled, setKnowledgeEnabled,
     searchMode, setSearchMode,
     grounding, setGrounding,
+    polishPass, setPolishPass,
+    attachedUrls, setAttachedUrls, attachedFiles, setAttachedFiles, clearAttachments,
     buildToggles,
   };
 }

@@ -20,6 +20,11 @@ interface UseChatDeps {
   searchMode: SearchMode;
   ragEnabled: boolean;
   knowledgeEnabled: boolean;
+  polishPass?: boolean;
+  strictGrounding?: boolean;
+  askBack?: boolean;
+  getAttachedUrls?: () => string[];
+  clearAttachments?: () => void;
   setActiveId: (id: number | null) => void;
   setConversations: React.Dispatch<React.SetStateAction<import('../../../api/types/Conversation').Conversation[]>>;
   setConversationTopics: (topics: string[]) => void;
@@ -371,6 +376,8 @@ export function useChat(deps: UseChatDeps): ChatState {
 
     const isFirstMessage = deps.activeId == null;
 
+    const attachedUrls = deps.getAttachedUrls?.() ?? [];
+
     try {
       await runChatStreamFn(
         {
@@ -381,10 +388,15 @@ export function useChat(deps: UseChatDeps): ChatState {
           ...(isFirstMessage && deps.knowledgeEnabled ? { knowledge_enabled: true } : {}),
           search_mode: deps.searchMode,
           ...(deps.styleKey ? { response_style: deps.styleKey } : {}),
+          ...(deps.polishPass ? { polish_pass: true } : {}),
+          ...(deps.strictGrounding ? { strict_grounding: true } : {}),
+          ...(deps.askBack ? { ask_back: true } : {}),
+          ...(attachedUrls.length > 0 ? { attached_urls: attachedUrls } : {}),
         },
         pendingId,
         text,
       );
+      deps.clearAttachments?.();
     } finally {
       setSending(false);
     }

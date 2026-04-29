@@ -7,10 +7,12 @@ interface NavItem {
   to: string;
   label: string;
   matchPrefix?: string;
+  excludePrefixes?: string[];
 }
 
 const NAV: NavItem[] = [
-  { to: '/home', label: 'Home' },
+  { to: '/home', label: 'Home', excludePrefixes: ['/home/connectors'] },
+  { to: '/home/connectors', label: 'Connectors', matchPrefix: '/home/connectors' },
   { to: '/chat', label: 'Chat' },
   { to: '/code', label: 'Code' },
   { to: '/agents', label: 'Agents', matchPrefix: '/agents' },
@@ -41,8 +43,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <nav className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto no-scrollbar">
             {NAV.map((item) => {
               const prefix = item.matchPrefix ?? item.to;
+              const excluded = (item.excludePrefixes ?? []).some(
+                (ex) => pathname === ex || pathname.startsWith(`${ex}/`),
+              );
               const isActive =
-                pathname === item.to || pathname.startsWith(`${prefix}/`);
+                !excluded && (pathname === item.to || pathname.startsWith(`${prefix}/`));
               return (
                 <Link
                   key={item.to}

@@ -21,6 +21,7 @@ import { Route as ArchitectureRouteImport } from './routes/architecture'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResearchIdRouteImport } from './routes/research_.$id'
+import { Route as HomeConnectorsRouteImport } from './routes/home.connectors'
 import { Route as AgentsNewRouteImport } from './routes/agents.new'
 import { Route as AgentsIdRouteImport } from './routes/agents.$id'
 import { Route as HubResearchIdRouteImport } from './routes/hub_.research.$id'
@@ -87,6 +88,11 @@ const ResearchIdRoute = ResearchIdRouteImport.update({
   path: '/research/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HomeConnectorsRoute = HomeConnectorsRouteImport.update({
+  id: '/connectors',
+  path: '/connectors',
+  getParentRoute: () => HomeRoute,
+} as any)
 const AgentsNewRoute = AgentsNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -119,7 +125,7 @@ export interface FileRoutesByFullPath {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/home': typeof HomeRoute
+  '/home': typeof HomeRouteWithChildren
   '/hub': typeof HubRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
@@ -127,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
+  '/home/connectors': typeof HomeConnectorsRoute
   '/research/$id': typeof ResearchIdRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/hub/research/$id': typeof HubResearchIdRoute
@@ -138,7 +145,7 @@ export interface FileRoutesByTo {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/home': typeof HomeRoute
+  '/home': typeof HomeRouteWithChildren
   '/hub': typeof HubRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
@@ -146,6 +153,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
+  '/home/connectors': typeof HomeConnectorsRoute
   '/research/$id': typeof ResearchIdRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/hub/research/$id': typeof HubResearchIdRoute
@@ -158,7 +166,7 @@ export interface FileRoutesById {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
-  '/home': typeof HomeRoute
+  '/home': typeof HomeRouteWithChildren
   '/hub': typeof HubRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
@@ -166,6 +174,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
+  '/home/connectors': typeof HomeConnectorsRoute
   '/research_/$id': typeof ResearchIdRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/hub_/research/$id': typeof HubResearchIdRoute
@@ -187,6 +196,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/agents/$id'
     | '/agents/new'
+    | '/home/connectors'
     | '/research/$id'
     | '/agents/edit/$id'
     | '/hub/research/$id'
@@ -206,6 +216,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/agents/$id'
     | '/agents/new'
+    | '/home/connectors'
     | '/research/$id'
     | '/agents/edit/$id'
     | '/hub/research/$id'
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/agents/$id'
     | '/agents/new'
+    | '/home/connectors'
     | '/research_/$id'
     | '/agents/edit/$id'
     | '/hub_/research/$id'
@@ -237,7 +249,7 @@ export interface RootRouteChildren {
   ArchitectureRoute: typeof ArchitectureRoute
   ChatRoute: typeof ChatRoute
   CodeRoute: typeof CodeRoute
-  HomeRoute: typeof HomeRoute
+  HomeRoute: typeof HomeRouteWithChildren
   HubRoute: typeof HubRoute
   LoginRoute: typeof LoginRoute
   LogsRoute: typeof LogsRoute
@@ -333,6 +345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResearchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/home/connectors': {
+      id: '/home/connectors'
+      path: '/connectors'
+      fullPath: '/home/connectors'
+      preLoaderRoute: typeof HomeConnectorsRouteImport
+      parentRoute: typeof HomeRoute
+    }
     '/agents/new': {
       id: '/agents/new'
       path: '/new'
@@ -398,13 +417,23 @@ const AgentsRouteChildren: AgentsRouteChildren = {
 const AgentsRouteWithChildren =
   AgentsRoute._addFileChildren(AgentsRouteChildren)
 
+interface HomeRouteChildren {
+  HomeConnectorsRoute: typeof HomeConnectorsRoute
+}
+
+const HomeRouteChildren: HomeRouteChildren = {
+  HomeConnectorsRoute: HomeConnectorsRoute,
+}
+
+const HomeRouteWithChildren = HomeRoute._addFileChildren(HomeRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsRoute: AgentsRouteWithChildren,
   ArchitectureRoute: ArchitectureRoute,
   ChatRoute: ChatRoute,
   CodeRoute: CodeRoute,
-  HomeRoute: HomeRoute,
+  HomeRoute: HomeRouteWithChildren,
   HubRoute: HubRoute,
   LoginRoute: LoginRoute,
   LogsRoute: LogsRoute,

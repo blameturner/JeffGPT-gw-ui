@@ -80,7 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             Jeff<span className="italic">GPT</span>
             <span className="inline-block w-1.5 h-1.5 bg-fg rounded-full align-middle ml-1.5" />
           </Link>
-          <nav className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto no-scrollbar">
+          <nav className="flex items-center gap-0.5 sm:gap-1 flex-wrap">
             {NAV.map((entry) =>
               'items' in entry ? (
                 <NavGroup key={entry.label} group={entry} pathname={pathname} />

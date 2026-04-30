@@ -11,10 +11,16 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as ResearchRouteImport } from './routes/research'
+import { Route as PaRouteImport } from './routes/pa'
+import { Route as OpsRouteImport } from './routes/ops'
+import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LiveRouteImport } from './routes/live'
 import { Route as HubRouteImport } from './routes/hub'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as HarvestRouteImport } from './routes/harvest'
+import { Route as GraphRouteImport } from './routes/graph'
 import { Route as CodeRouteImport } from './routes/code'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ArchitectureRouteImport } from './routes/architecture'
@@ -38,6 +44,21 @@ const ResearchRoute = ResearchRouteImport.update({
   path: '/research',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PaRoute = PaRouteImport.update({
+  id: '/pa',
+  path: '/pa',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OpsRoute = OpsRouteImport.update({
+  id: '/ops',
+  path: '/ops',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MemoryRoute = MemoryRouteImport.update({
+  id: '/memory',
+  path: '/memory',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LogsRoute = LogsRouteImport.update({
   id: '/logs',
   path: '/logs',
@@ -48,6 +69,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LiveRoute = LiveRouteImport.update({
+  id: '/live',
+  path: '/live',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HubRoute = HubRouteImport.update({
   id: '/hub',
   path: '/hub',
@@ -56,6 +82,16 @@ const HubRoute = HubRouteImport.update({
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HarvestRoute = HarvestRouteImport.update({
+  id: '/harvest',
+  path: '/harvest',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GraphRoute = GraphRouteImport.update({
+  id: '/graph',
+  path: '/graph',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CodeRoute = CodeRouteImport.update({
@@ -125,10 +161,16 @@ export interface FileRoutesByFullPath {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
+  '/graph': typeof GraphRoute
+  '/harvest': typeof HarvestRoute
   '/home': typeof HomeRouteWithChildren
   '/hub': typeof HubRoute
+  '/live': typeof LiveRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
+  '/memory': typeof MemoryRoute
+  '/ops': typeof OpsRoute
+  '/pa': typeof PaRoute
   '/research': typeof ResearchRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
@@ -145,10 +187,16 @@ export interface FileRoutesByTo {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
+  '/graph': typeof GraphRoute
+  '/harvest': typeof HarvestRoute
   '/home': typeof HomeRouteWithChildren
   '/hub': typeof HubRoute
+  '/live': typeof LiveRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
+  '/memory': typeof MemoryRoute
+  '/ops': typeof OpsRoute
+  '/pa': typeof PaRoute
   '/research': typeof ResearchRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
@@ -166,10 +214,16 @@ export interface FileRoutesById {
   '/architecture': typeof ArchitectureRoute
   '/chat': typeof ChatRoute
   '/code': typeof CodeRoute
+  '/graph': typeof GraphRoute
+  '/harvest': typeof HarvestRoute
   '/home': typeof HomeRouteWithChildren
   '/hub': typeof HubRoute
+  '/live': typeof LiveRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
+  '/memory': typeof MemoryRoute
+  '/ops': typeof OpsRoute
+  '/pa': typeof PaRoute
   '/research': typeof ResearchRoute
   '/setup': typeof SetupRoute
   '/agents/$id': typeof AgentsIdRouteWithChildren
@@ -188,10 +242,16 @@ export interface FileRouteTypes {
     | '/architecture'
     | '/chat'
     | '/code'
+    | '/graph'
+    | '/harvest'
     | '/home'
     | '/hub'
+    | '/live'
     | '/login'
     | '/logs'
+    | '/memory'
+    | '/ops'
+    | '/pa'
     | '/research'
     | '/setup'
     | '/agents/$id'
@@ -208,10 +268,16 @@ export interface FileRouteTypes {
     | '/architecture'
     | '/chat'
     | '/code'
+    | '/graph'
+    | '/harvest'
     | '/home'
     | '/hub'
+    | '/live'
     | '/login'
     | '/logs'
+    | '/memory'
+    | '/ops'
+    | '/pa'
     | '/research'
     | '/setup'
     | '/agents/$id'
@@ -228,10 +294,16 @@ export interface FileRouteTypes {
     | '/architecture'
     | '/chat'
     | '/code'
+    | '/graph'
+    | '/harvest'
     | '/home'
     | '/hub'
+    | '/live'
     | '/login'
     | '/logs'
+    | '/memory'
+    | '/ops'
+    | '/pa'
     | '/research'
     | '/setup'
     | '/agents/$id'
@@ -249,10 +321,16 @@ export interface RootRouteChildren {
   ArchitectureRoute: typeof ArchitectureRoute
   ChatRoute: typeof ChatRoute
   CodeRoute: typeof CodeRoute
+  GraphRoute: typeof GraphRoute
+  HarvestRoute: typeof HarvestRoute
   HomeRoute: typeof HomeRouteWithChildren
   HubRoute: typeof HubRoute
+  LiveRoute: typeof LiveRoute
   LoginRoute: typeof LoginRoute
   LogsRoute: typeof LogsRoute
+  MemoryRoute: typeof MemoryRoute
+  OpsRoute: typeof OpsRoute
+  PaRoute: typeof PaRoute
   ResearchRoute: typeof ResearchRoute
   SetupRoute: typeof SetupRoute
   ResearchIdRoute: typeof ResearchIdRoute
@@ -275,6 +353,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResearchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pa': {
+      id: '/pa'
+      path: '/pa'
+      fullPath: '/pa'
+      preLoaderRoute: typeof PaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ops': {
+      id: '/ops'
+      path: '/ops'
+      fullPath: '/ops'
+      preLoaderRoute: typeof OpsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/memory': {
+      id: '/memory'
+      path: '/memory'
+      fullPath: '/memory'
+      preLoaderRoute: typeof MemoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/logs': {
       id: '/logs'
       path: '/logs'
@@ -289,6 +388,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/live': {
+      id: '/live'
+      path: '/live'
+      fullPath: '/live'
+      preLoaderRoute: typeof LiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/hub': {
       id: '/hub'
       path: '/hub'
@@ -301,6 +407,20 @@ declare module '@tanstack/react-router' {
       path: '/home'
       fullPath: '/home'
       preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/harvest': {
+      id: '/harvest'
+      path: '/harvest'
+      fullPath: '/harvest'
+      preLoaderRoute: typeof HarvestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/graph': {
+      id: '/graph'
+      path: '/graph'
+      fullPath: '/graph'
+      preLoaderRoute: typeof GraphRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/code': {
@@ -433,10 +553,16 @@ const rootRouteChildren: RootRouteChildren = {
   ArchitectureRoute: ArchitectureRoute,
   ChatRoute: ChatRoute,
   CodeRoute: CodeRoute,
+  GraphRoute: GraphRoute,
+  HarvestRoute: HarvestRoute,
   HomeRoute: HomeRouteWithChildren,
   HubRoute: HubRoute,
+  LiveRoute: LiveRoute,
   LoginRoute: LoginRoute,
   LogsRoute: LogsRoute,
+  MemoryRoute: MemoryRoute,
+  OpsRoute: OpsRoute,
+  PaRoute: PaRoute,
   ResearchRoute: ResearchRoute,
   SetupRoute: SetupRoute,
   ResearchIdRoute: ResearchIdRoute,

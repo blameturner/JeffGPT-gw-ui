@@ -7,8 +7,8 @@ export const Route = createFileRoute('/home')({
   validateSearch: (search) => ({
     tab:
       typeof search.tab === 'string' &&
-      ['dashboard', 'logs', 'stats', 'queue', 'connectors'].includes(search.tab)
-        ? (search.tab as 'dashboard' | 'logs' | 'stats' | 'queue' | 'connectors')
+      ['dashboard', 'logs', 'stats', 'connectors'].includes(search.tab)
+        ? (search.tab as 'dashboard' | 'logs' | 'stats' | 'connectors')
         : undefined,
   }),
   beforeLoad: async () => {

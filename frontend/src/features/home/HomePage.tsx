@@ -5,16 +5,15 @@ import { UnhealthyBanner } from './dashboard/UnhealthyBanner';
 import { DashboardTab } from './tabs/DashboardTab';
 import { LogsTab } from './tabs/LogsTab';
 import { StatsTab } from './tabs/StatsTab';
-import { QueueTab } from './tabs/QueueTab';
 import { ConnectorsPage } from '../connectors/ConnectorsPage';
 
-type Tab = 'dashboard' | 'logs' | 'stats' | 'queue' | 'connectors';
+// Queues tab moved to /live (tool-queue + enrichment + triggers).
+type Tab = 'dashboard' | 'logs' | 'stats' | 'connectors';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'logs', label: 'Logs' },
   { id: 'stats', label: 'Stats' },
-  { id: 'queue', label: 'Queues' },
   { id: 'connectors', label: 'Connectors' },
 ];
 
@@ -85,7 +84,6 @@ export function HomePage() {
         </div>
         {tab === 'logs' && <LogsTab />}
         {tab === 'stats' && <StatsTab />}
-        {tab === 'queue' && <QueueTab />}
         {tab === 'connectors' && <ConnectorsPage />}
       </div>
     </div>

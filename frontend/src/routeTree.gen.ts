@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SimulationsRouteImport } from './routes/simulations'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as ResearchRouteImport } from './routes/research'
 import { Route as PaRouteImport } from './routes/pa'
@@ -26,6 +27,7 @@ import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ArchitectureRouteImport } from './routes/architecture'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SimulationsSimIdRouteImport } from './routes/simulations.$simId'
 import { Route as ResearchIdRouteImport } from './routes/research_.$id'
 import { Route as HomeConnectorsRouteImport } from './routes/home.connectors'
 import { Route as AgentsNewRouteImport } from './routes/agents.new'
@@ -34,6 +36,11 @@ import { Route as HubResearchIdRouteImport } from './routes/hub_.research.$id'
 import { Route as AgentsEditIdRouteImport } from './routes/agents.edit.$id'
 import { Route as AgentsIdRunsRunIdRouteImport } from './routes/agents.$id.runs.$runId'
 
+const SimulationsRoute = SimulationsRouteImport.update({
+  id: '/simulations',
+  path: '/simulations',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
@@ -119,6 +126,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SimulationsSimIdRoute = SimulationsSimIdRouteImport.update({
+  id: '/$simId',
+  path: '/$simId',
+  getParentRoute: () => SimulationsRoute,
+} as any)
 const ResearchIdRoute = ResearchIdRouteImport.update({
   id: '/research_/$id',
   path: '/research/$id',
@@ -173,10 +185,12 @@ export interface FileRoutesByFullPath {
   '/pa': typeof PaRoute
   '/research': typeof ResearchRoute
   '/setup': typeof SetupRoute
+  '/simulations': typeof SimulationsRouteWithChildren
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
   '/home/connectors': typeof HomeConnectorsRoute
   '/research/$id': typeof ResearchIdRoute
+  '/simulations/$simId': typeof SimulationsSimIdRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/hub/research/$id': typeof HubResearchIdRoute
   '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
@@ -199,10 +213,12 @@ export interface FileRoutesByTo {
   '/pa': typeof PaRoute
   '/research': typeof ResearchRoute
   '/setup': typeof SetupRoute
+  '/simulations': typeof SimulationsRouteWithChildren
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
   '/home/connectors': typeof HomeConnectorsRoute
   '/research/$id': typeof ResearchIdRoute
+  '/simulations/$simId': typeof SimulationsSimIdRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/hub/research/$id': typeof HubResearchIdRoute
   '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
@@ -226,10 +242,12 @@ export interface FileRoutesById {
   '/pa': typeof PaRoute
   '/research': typeof ResearchRoute
   '/setup': typeof SetupRoute
+  '/simulations': typeof SimulationsRouteWithChildren
   '/agents/$id': typeof AgentsIdRouteWithChildren
   '/agents/new': typeof AgentsNewRoute
   '/home/connectors': typeof HomeConnectorsRoute
   '/research_/$id': typeof ResearchIdRoute
+  '/simulations/$simId': typeof SimulationsSimIdRoute
   '/agents/edit/$id': typeof AgentsEditIdRoute
   '/hub_/research/$id': typeof HubResearchIdRoute
   '/agents/$id/runs/$runId': typeof AgentsIdRunsRunIdRoute
@@ -254,10 +272,12 @@ export interface FileRouteTypes {
     | '/pa'
     | '/research'
     | '/setup'
+    | '/simulations'
     | '/agents/$id'
     | '/agents/new'
     | '/home/connectors'
     | '/research/$id'
+    | '/simulations/$simId'
     | '/agents/edit/$id'
     | '/hub/research/$id'
     | '/agents/$id/runs/$runId'
@@ -280,10 +300,12 @@ export interface FileRouteTypes {
     | '/pa'
     | '/research'
     | '/setup'
+    | '/simulations'
     | '/agents/$id'
     | '/agents/new'
     | '/home/connectors'
     | '/research/$id'
+    | '/simulations/$simId'
     | '/agents/edit/$id'
     | '/hub/research/$id'
     | '/agents/$id/runs/$runId'
@@ -306,10 +328,12 @@ export interface FileRouteTypes {
     | '/pa'
     | '/research'
     | '/setup'
+    | '/simulations'
     | '/agents/$id'
     | '/agents/new'
     | '/home/connectors'
     | '/research_/$id'
+    | '/simulations/$simId'
     | '/agents/edit/$id'
     | '/hub_/research/$id'
     | '/agents/$id/runs/$runId'
@@ -333,12 +357,20 @@ export interface RootRouteChildren {
   PaRoute: typeof PaRoute
   ResearchRoute: typeof ResearchRoute
   SetupRoute: typeof SetupRoute
+  SimulationsRoute: typeof SimulationsRouteWithChildren
   ResearchIdRoute: typeof ResearchIdRoute
   HubResearchIdRoute: typeof HubResearchIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/simulations': {
+      id: '/simulations'
+      path: '/simulations'
+      fullPath: '/simulations'
+      preLoaderRoute: typeof SimulationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/setup': {
       id: '/setup'
       path: '/setup'
@@ -458,6 +490,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/simulations/$simId': {
+      id: '/simulations/$simId'
+      path: '/$simId'
+      fullPath: '/simulations/$simId'
+      preLoaderRoute: typeof SimulationsSimIdRouteImport
+      parentRoute: typeof SimulationsRoute
+    }
     '/research_/$id': {
       id: '/research_/$id'
       path: '/research/$id'
@@ -547,6 +586,18 @@ const HomeRouteChildren: HomeRouteChildren = {
 
 const HomeRouteWithChildren = HomeRoute._addFileChildren(HomeRouteChildren)
 
+interface SimulationsRouteChildren {
+  SimulationsSimIdRoute: typeof SimulationsSimIdRoute
+}
+
+const SimulationsRouteChildren: SimulationsRouteChildren = {
+  SimulationsSimIdRoute: SimulationsSimIdRoute,
+}
+
+const SimulationsRouteWithChildren = SimulationsRoute._addFileChildren(
+  SimulationsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsRoute: AgentsRouteWithChildren,
@@ -565,6 +616,7 @@ const rootRouteChildren: RootRouteChildren = {
   PaRoute: PaRoute,
   ResearchRoute: ResearchRoute,
   SetupRoute: SetupRoute,
+  SimulationsRoute: SimulationsRouteWithChildren,
   ResearchIdRoute: ResearchIdRoute,
   HubResearchIdRoute: HubResearchIdRoute,
 }

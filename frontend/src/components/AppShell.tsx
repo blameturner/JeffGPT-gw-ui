@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="h-screen flex flex-col bg-bg text-fg">
-      <header className="shrink-0 h-14 border-b border-border bg-bg/90 backdrop-blur flex items-center justify-between px-3 sm:px-6">
+      <header className="shrink-0 h-14 border-b border-border bg-bg/90 backdrop-blur flex items-center justify-between px-3 sm:px-6 relative z-40">
         <div className="flex items-center gap-3 sm:gap-8 min-w-0">
           <Link
             to="/home"
@@ -188,7 +188,7 @@ function NavGroup({ group, pathname }: { group: NavGroupDef; pathname: string })
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-full mt-1 min-w-[10rem] bg-bg border border-border rounded-md shadow-card py-1 z-20 animate-fadeIn"
+          className="absolute left-0 top-full mt-1 min-w-[10rem] bg-bg border border-border rounded-md shadow-card py-1 z-50 animate-fadeIn"
         >
           {group.items.map((it) => {
             const active = isLeafActive(it, pathname);

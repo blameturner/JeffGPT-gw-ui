@@ -1,59 +1,101 @@
-import { useEffect, useState } from 'react';
-import {
-  paPageApi,
-  type AnchoredAsk,
-  type PAFeedItem,
-  type PATopic,
-} from '../../api/pa';
-import {
-  Btn,
-  Drawer,
-  Empty,
-  Eyebrow,
-  PageHeader,
-  StatusPill,
-  TabRow,
-  type TabDef,
-} from '../../components/ui';
-import { relTime } from '../../lib/utils/relTime';
+// PA page — Home Chat is the personal assistant.
+//
+// Layout: chat fills the page; PA-specific affordances (open asks, warm
+// topics, on-my-mind drawer, facts modal) sit in a compact right rail and
+// header strip. The Home page now focuses on insights / feed; this page is
+// where the user actually talks to the PA.
 
-type Tab = 'asks' | 'topics';
-const TABS: ReadonlyArray<TabDef<Tab>> = [
-  { id: 'asks', label: 'Anchored asks' },
-  { id: 'topics', label: 'Topics' },
-];
+import { useEffect, useRef, useState } from 'react';
+import { paPageApi, type AnchoredAsk, type PATopic } from '../../api/pa';
+import { Btn, Drawer, Empty, Eyebrow, PageHeader, StatusPill } from '../../components/ui';
+import { relTime } from '../../lib/utils/relTime';
+import { useOverview } from '../home/hooks/useOverview';
+import { usePAStatus } from '../home/hooks/usePAStatus';
+import { HomeChat, type HomeChatHandle } from '../home/dashboard/HomeChat';
+import { PAHeaderStrip } from '../home/dashboard/PAHeaderStrip';
+import { OnMyMindPanel } from '../home/dashboard/OnMyMindPanel';
+import { PAFactsModal } from '../home/dashboard/modals/PAFactsModal';
 
 export function PAPage() {
-  const [tab, setTab] = useState<Tab>('asks');
-  const [feed, setFeed] = useState<PAFeedItem[] | null>(null);
+  const { overview } = useOverview();
+  const { status: paStatus, refresh: refreshPA } = usePAStatus();
+  const chatRef = useRef<HomeChatHandle>(null);
+  const [mindOpen, setMindOpen] = useState(false);
+  const [factsOpen, setFactsOpen] = useState(false);
+  const [topicDrawerId, setTopicDrawerId] = useState<string | null>(null);
 
-  useEffect(() => {
-    paPageApi.feed(50).then((r) => setFeed(r.items)).catch(() => setFeed([]));
-  }, []);
+  const paEnabled = paStatus?.enabled ?? false;
 
   return (
     <div className="h-full flex flex-col bg-bg text-fg font-sans">
       <PageHeader
-        eyebrow="Personal agent"
+        eyebrow="Personal assistant"
         title="PA"
-        right={<TabRow tabs={TABS} active={tab} onChange={setTab} size="sm" />}
+        right={
+          <div className="flex items-center gap-2">
+            <Btn size="sm" onClick={() => setFactsOpen(true)}>
+              Facts
+            </Btn>
+            <Btn size="sm" onClick={() => setMindOpen(true)}>
+              On my mind
+            </Btn>
+          </div>
+        }
       />
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {tab === 'asks' ? <AsksTab /> : <TopicsTab />}
+      {paEnabled && paStatus && (
+        <PAHeaderStrip
+          status={paStatus}
+          onPinged={() => {
+            void refreshPA();
+            chatRef.current?.refresh();
+          }}
+          onOpenMind={() => setMindOpen(true)}
+          onOpenFacts={() => setFactsOpen(true)}
+        />
+      )}
+
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 sm:gap-6 px-4 sm:px-6 py-4 sm:py-6 overflow-hidden">
+        <section className="h-[70vh] min-h-[420px] lg:h-auto lg:min-h-0">
+          <HomeChat ref={chatRef} conversationId={overview?.home_conversation?.id ?? null} />
+        </section>
+
+        <aside className="space-y-6 min-h-0 overflow-y-auto pr-1">
+          <AsksPanel
+            onAct={() => {
+              void refreshPA();
+            }}
+          />
+          <TopicsPanel onOpen={(id) => setTopicDrawerId(id)} />
+        </aside>
       </div>
 
-      <FeedStrip items={feed} />
+      <TopicDrawer
+        id={topicDrawerId}
+        onClose={() => setTopicDrawerId(null)}
+      />
+      {paEnabled && (
+        <OnMyMindPanel
+          open={mindOpen}
+          onClose={() => setMindOpen(false)}
+          onChanged={refreshPA}
+        />
+      )}
+      {paEnabled && factsOpen && <PAFactsModal onClose={() => setFactsOpen(false)} />}
     </div>
   );
 }
 
-function AsksTab() {
+function AsksPanel({ onAct }: { onAct: () => void }) {
   const [asks, setAsks] = useState<AnchoredAsk[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = () =>
-    paPageApi.anchoredAsks('open', 100).then((r) => setAsks(r.asks)).catch(() => setAsks([]));
+    paPageApi
+      .anchoredAsks('open', 25)
+      .then((r) => setAsks(r.asks))
+      .catch(() => setAsks([]));
+
   useEffect(() => {
     void load();
   }, []);
@@ -63,251 +105,187 @@ function AsksTab() {
     try {
       await fn();
       await load();
+      onAct();
     } finally {
       setBusy(null);
     }
   };
 
   return (
-    <div className="px-5 sm:px-8 py-5">
+    <section>
+      <div className="flex items-baseline justify-between mb-2">
+        <Eyebrow>Anchored asks</Eyebrow>
+        {asks && asks.length > 0 && (
+          <span className="font-mono text-[10px] text-muted">{asks.length}</span>
+        )}
+      </div>
       {asks == null ? (
         <div className="text-xs text-muted">Loading…</div>
       ) : asks.length === 0 ? (
-        <Empty title="No anchored asks" hint="They'll appear here once the PA opens follow-ups." />
+        <Empty compact title="nothing open" hint="The PA will surface follow-ups here." />
       ) : (
-        <div className="overflow-x-auto -mx-1 px-1">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-[10px] uppercase tracking-[0.18em] text-muted border-b border-border">
-                <th className="text-left py-2">title</th>
-                <th className="text-left py-2 w-28">status</th>
-                <th className="text-right py-2 w-20">age</th>
-                <th className="text-right py-2 w-32">last nudge</th>
-                <th className="text-right py-2 w-60">actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {asks.map((a) => (
-                <tr key={a.id} className="border-b border-border hover:bg-panel/60">
-                  <td className="py-2 pr-3 text-fg">{a.title}</td>
-                  <td className="py-2">
-                    <StatusPill status={a.status} />
-                  </td>
-                  <td className="py-2 text-right font-mono text-xs text-muted">
-                    {fmtAge(a.age_seconds)}
-                  </td>
-                  <td className="py-2 text-right font-mono text-xs text-muted">
-                    {a.last_nudge_at ? relTime(a.last_nudge_at) : '—'}
-                  </td>
-                  <td className="py-2 text-right">
-                    <div className="inline-flex gap-1">
-                      <Btn
-                        size="sm"
-                        disabled={busy === a.id}
-                        onClick={() => void act(a.id, () => paPageApi.nudgeAsk(a.id))}
-                      >
-                        Nudge
-                      </Btn>
-                      <Btn
-                        size="sm"
-                        disabled={busy === a.id}
-                        onClick={() => void act(a.id, () => paPageApi.snoozeAsk(a.id, 24))}
-                      >
-                        Snooze
-                      </Btn>
-                      <Btn
-                        size="sm"
-                        variant="danger"
-                        disabled={busy === a.id}
-                        onClick={() => void act(a.id, () => paPageApi.closeAsk(a.id))}
-                      >
-                        Close
-                      </Btn>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="space-y-2">
+          {asks.slice(0, 8).map((a) => (
+            <li
+              key={a.id}
+              className="border border-border rounded-md bg-bg p-3 space-y-1.5"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-xs leading-snug text-fg/90 line-clamp-2 flex-1">{a.title}</p>
+                <StatusPill status={a.status} />
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  className="px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] border border-border rounded-sm text-muted hover:text-fg hover:border-fg disabled:opacity-50"
+                  disabled={busy === a.id}
+                  onClick={() => void act(a.id, () => paPageApi.nudgeAsk(a.id))}
+                >
+                  Nudge
+                </button>
+                <button
+                  className="px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] border border-border rounded-sm text-muted hover:text-fg hover:border-fg disabled:opacity-50"
+                  disabled={busy === a.id}
+                  onClick={() => void act(a.id, () => paPageApi.snoozeAsk(a.id, 24))}
+                >
+                  Snooze
+                </button>
+                <button
+                  className="px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] border border-border rounded-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  disabled={busy === a.id}
+                  onClick={() => void act(a.id, () => paPageApi.closeAsk(a.id))}
+                >
+                  Close
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </section>
   );
 }
 
-function fmtAge(s: number): string {
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  if (s < 86400) return `${Math.round(s / 3600)}h`;
-  return `${Math.round(s / 86400)}d`;
-}
-
-function TopicsTab() {
+function TopicsPanel({ onOpen }: { onOpen: (id: string) => void }) {
   const [topics, setTopics] = useState<PATopic[] | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [active, setActive] = useState<PATopic | null>(null);
-  const [drawerLoading, setDrawerLoading] = useState(false);
 
   useEffect(() => {
-    paPageApi.topics(60).then((r) => setTopics(r.topics)).catch(() => setTopics([]));
+    paPageApi
+      .topics(20)
+      .then((r) => setTopics(r.topics))
+      .catch(() => setTopics([]));
   }, []);
 
-  useEffect(() => {
-    if (!activeId) {
-      setActive(null);
-      return;
-    }
-    setDrawerLoading(true);
-    paPageApi
-      .topic(activeId)
-      .then(setActive)
-      .finally(() => setDrawerLoading(false));
-  }, [activeId]);
-
   return (
-    <div className="px-5 sm:px-8 py-5">
+    <section>
+      <div className="flex items-baseline justify-between mb-2">
+        <Eyebrow>Warm topics</Eyebrow>
+        {topics && topics.length > 0 && (
+          <span className="font-mono text-[10px] text-muted">{topics.length}</span>
+        )}
+      </div>
       {topics == null ? (
         <div className="text-xs text-muted">Loading…</div>
       ) : topics.length === 0 ? (
-        <Empty title="No warm topics" />
+        <Empty compact title="no warm topics" />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {topics.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveId(t.id)}
-              className="text-left group border border-border rounded-md bg-bg p-4 hover:border-fg hover:shadow-card transition-all"
-            >
-              <div className="flex items-baseline justify-between gap-2 mb-2">
-                <h3 className="font-display text-base tracking-tightest leading-tight truncate flex-1">
-                  {t.title}
-                </h3>
-                {t.warmth != null && (
-                  <span
-                    className="shrink-0 font-mono text-[10px] text-muted border border-border rounded-sm px-1.5 py-0.5"
-                    title="warmth"
-                  >
-                    {t.warmth.toFixed(2)}
+        <ul className="space-y-1.5">
+          {topics.slice(0, 12).map((t) => (
+            <li key={t.id}>
+              <button
+                onClick={() => onOpen(t.id)}
+                className="w-full text-left border border-border rounded-md bg-bg px-3 py-2 hover:border-fg transition-colors"
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-xs text-fg/90 truncate flex-1">{t.title}</span>
+                  {t.warmth != null && (
+                    <span className="font-mono text-[10px] text-muted shrink-0">
+                      {t.warmth.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+                {t.last_active && (
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-muted">
+                    {relTime(t.last_active)}
                   </span>
                 )}
-              </div>
-              {t.warmth != null && (
-                <div className="h-0.5 bg-panel rounded-full overflow-hidden mb-2">
-                  <div
-                    className="h-full bg-fg/80"
-                    style={{ width: `${Math.min(100, t.warmth * 100)}%` }}
-                  />
-                </div>
-              )}
-              {t.brief && (
-                <p className="text-xs text-muted line-clamp-3 whitespace-pre-wrap leading-relaxed">
-                  {t.brief}
-                </p>
-              )}
-              <div className="mt-3 flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] text-muted">
-                {t.last_active && <span>{relTime(t.last_active)}</span>}
-                {t.source_count != null && <span>{t.source_count} src</span>}
-                {t.muted && <span className="text-fg/70">muted</span>}
-              </div>
-            </button>
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-
-      <Drawer
-        open={!!activeId && !!active}
-        onClose={() => setActiveId(null)}
-        eyebrow="Topic"
-        title={active?.title}
-        meta={active?.warmth != null ? `warmth ${active.warmth.toFixed(2)}` : undefined}
-        actions={
-          active && (
-            <>
-              <Btn
-                variant="primary"
-                onClick={() => {
-                  if (active) void paPageApi.researchTopic(active.id);
-                }}
-              >
-                Research now
-              </Btn>
-              <Btn
-                disabled={!!active?.muted}
-                onClick={async () => {
-                  if (!active) return;
-                  await paPageApi.muteTopic(active.id);
-                  setActive({ ...active, muted: true });
-                }}
-              >
-                {active?.muted ? 'Muted' : 'Mute'}
-              </Btn>
-            </>
-          )
-        }
-      >
-        {drawerLoading && <div className="text-xs text-muted">Loading…</div>}
-        {active?.brief && (
-          <p className="text-sm whitespace-pre-wrap leading-relaxed text-fg/90">{active.brief}</p>
-        )}
-        {active?.sources && active.sources.length > 0 && (
-          <div className="mt-5">
-            <Eyebrow className="mb-1.5">Sources</Eyebrow>
-            <ul className="space-y-1.5 text-xs">
-              {active.sources.map((s) => (
-                <li key={s.id} className="border-l-2 border-border pl-2">
-                  {s.url ? (
-                    <a
-                      href={s.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline hover:no-underline"
-                    >
-                      {s.title || s.url}
-                    </a>
-                  ) : (
-                    s.title || s.id
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {active?.engagement != null && (
-          <div className="mt-5 text-xs flex items-baseline justify-between border-t border-border pt-3">
-            <Eyebrow>engagement</Eyebrow>
-            <span className="font-mono">{active.engagement.toFixed(2)}</span>
-          </div>
-        )}
-      </Drawer>
-    </div>
+    </section>
   );
 }
 
-function FeedStrip({ items }: { items: PAFeedItem[] | null }) {
+function TopicDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const [topic, setTopic] = useState<PATopic | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!id) {
+      setTopic(null);
+      return;
+    }
+    setLoading(true);
+    paPageApi
+      .topic(id)
+      .then(setTopic)
+      .finally(() => setLoading(false));
+  }, [id]);
+
   return (
-    <div className="shrink-0 border-t border-border bg-panel/50">
-      <div className="px-5 sm:px-8 py-2.5 flex items-center gap-3 overflow-x-auto no-scrollbar">
-        <Eyebrow className="shrink-0">Daily feed</Eyebrow>
-        {items == null ? (
-          <div className="text-xs text-muted">Loading…</div>
-        ) : items.length === 0 ? (
-          <div className="text-[11px] uppercase tracking-[0.18em] text-muted">no data</div>
-        ) : (
-          items.map((it) => (
-            <div
-              key={it.id}
-              className="shrink-0 max-w-xs border border-border rounded-sm px-2.5 py-1.5 bg-bg hover:border-fg/40 transition-colors"
-              title={it.summary}
+    <Drawer
+      open={!!id && !!topic}
+      onClose={onClose}
+      eyebrow="Topic"
+      title={topic?.title}
+      meta={topic?.warmth != null ? `warmth ${topic.warmth.toFixed(2)}` : undefined}
+      actions={
+        topic && (
+          <>
+            <Btn variant="primary" onClick={() => void paPageApi.researchTopic(topic.id)}>
+              Research now
+            </Btn>
+            <Btn
+              disabled={!!topic?.muted}
+              onClick={async () => {
+                await paPageApi.muteTopic(topic.id);
+                setTopic({ ...topic, muted: true });
+              }}
             >
-              <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.16em] text-muted">
-                <span>{it.kind}</span>
-                <span aria-hidden>·</span>
-                <span>{relTime(it.created_at)}</span>
-              </div>
-              <div className="text-xs truncate text-fg/90">{it.title}</div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
+              {topic.muted ? 'Muted' : 'Mute'}
+            </Btn>
+          </>
+        )
+      }
+    >
+      {loading && <div className="text-xs text-muted">Loading…</div>}
+      {topic?.brief && (
+        <p className="text-sm whitespace-pre-wrap leading-relaxed text-fg/90">{topic.brief}</p>
+      )}
+      {topic?.sources && topic.sources.length > 0 && (
+        <div className="mt-5">
+          <Eyebrow className="mb-1.5">Sources</Eyebrow>
+          <ul className="space-y-1.5 text-xs">
+            {topic.sources.map((s) => (
+              <li key={s.id} className="border-l-2 border-border pl-2">
+                {s.url ? (
+                  <a
+                    href={s.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline hover:no-underline"
+                  >
+                    {s.title || s.url}
+                  </a>
+                ) : (
+                  s.title || s.id
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Drawer>
   );
 }

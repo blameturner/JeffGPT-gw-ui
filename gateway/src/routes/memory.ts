@@ -110,10 +110,30 @@ memoryRoute.post('/search', async (c) => {
   const q = (body.q ?? '').trim();
   if (!q) return c.json({ hits: [] });
 
-  const collections =
-    body.collections && body.collections.length > 0
-      ? body.collections
-      : ['agent_outputs'];
+  // No collections specified → discover what the org actually has and search
+  // all of them. Defaulting to `agent_outputs` only used to mean "search
+  // nothing useful" if the user's data lives in chat_knowledge / discovery /
+  // research_knowledge.
+  let collections = body.collections ?? [];
+  if (collections.length === 0) {
+    try {
+      const colRes = await harnessClient.get(
+        `/home/memory/collections?org_id=${encodeURIComponent(String(orgId))}`,
+        TIMEOUT,
+      );
+      if (colRes.ok) {
+        const data = (await colRes.json()) as {
+          collections?: Array<{ name: string; records?: number | null }>;
+        };
+        collections = (data.collections ?? [])
+          .filter((r) => Number(r.records ?? 0) > 0)
+          .map((r) => r.name);
+      }
+    } catch {
+      // ignore — fall through to the static default below
+    }
+    if (collections.length === 0) collections = ['agent_outputs', 'chat_knowledge'];
+  }
 
   // Fan out — harness /home/search is single-collection. Issue a small
   // bounded fan-out so the UI gets unified hits across the picked collections.

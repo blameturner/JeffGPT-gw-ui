@@ -5,6 +5,7 @@ import { getQueueJob } from '../../../../../api/queue/getQueueJob';
 import { retryQueueJob } from '../../../../../api/queue/retryQueueJob';
 import { runQueueJobNow } from '../../../../../api/queue/runQueueJobNow';
 import { updateJobPriority } from '../../../../../api/queue/updateJobPriority';
+import { restartBackgroundQueue } from '../../../../../api/queue/queueAdmin';
 import type { OpsDashboardResponse } from '../../../../../api/types/OpsDashboard';
 import type { QueueJob } from '../../../../../api/types/QueueJob';
 import { extractApiFailure, fmt, fmtWhen, safeStringify } from '../lib/formatters';
@@ -15,6 +16,8 @@ import { StatusChip } from './StatusChip';
 type Filter = 'all' | 'running' | 'failed' | 'waiting' | 'completed';
 
 const RETRY_STATUSES: ReadonlySet<QueueJob['status']> = new Set(['completed', 'failed', 'cancelled']);
+const RESTART_CONFIRM_PROMPT =
+  'Start background processing now? This bypasses the 30-minute interactive backoff and queued jobs may begin immediately.';
 
 export interface QueueJobsPanelProps {
   queueJobs?: OpsDashboardResponse['queue_jobs'];
@@ -41,6 +44,7 @@ export function QueueJobsPanel({
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [busyRestart, setBusyRestart] = useState(false);
 
   async function openDrawer(id: string) {
     setDrawerId(id);
@@ -110,6 +114,23 @@ export function QueueJobsPanel({
     });
   }
 
+  async function handleRestartBackground() {
+    if (!window.confirm(RESTART_CONFIRM_PROMPT)) return;
+
+    setBusyRestart(true);
+    setActionMessage(null);
+    try {
+      const res = await restartBackgroundQueue(true, 'manual restart from UI');
+      setActionMessage(`restart: ${String(res.status ?? 'requested')}`);
+      onActionComplete();
+    } catch (err) {
+      setActionMessage(`error: ${extractApiFailure(err).message}`);
+    } finally {
+      setBusyRestart(false);
+      window.setTimeout(() => setActionMessage(null), 6000);
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -124,9 +145,20 @@ export function QueueJobsPanel({
             { id: 'completed', label: 'Completed' },
           ]}
         />
-        {actionMessage && (
-          <span className="text-[11px] uppercase tracking-[0.14em] text-muted">{actionMessage}</span>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleRestartBackground()}
+            disabled={busyRestart}
+            title={RESTART_CONFIRM_PROMPT}
+            className="px-2.5 py-1 rounded border border-border text-[10px] uppercase tracking-[0.14em] text-muted hover:text-fg hover:border-fg disabled:opacity-50"
+          >
+            {busyRestart ? 'Restarting...' : 'Restart background'}
+          </button>
+          {actionMessage && (
+            <span className="text-[11px] uppercase tracking-[0.14em] text-muted">{actionMessage}</span>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto border border-border rounded">

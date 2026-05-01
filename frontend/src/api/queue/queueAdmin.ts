@@ -81,3 +81,16 @@ export async function stopAllTypes(pause = true): Promise<{ count: number; pause
     .post('api/tool-queue/stop-all', { json: { pause } })
     .json<{ count: number; paused?: string[]; resumed?: string[] }>();
 }
+
+export interface RestartBackgroundResponse {
+  status?: string;
+  confirm_prompt?: string;
+  [key: string]: unknown;
+}
+
+export async function restartBackgroundQueue(confirm: boolean, reason?: string): Promise<RestartBackgroundResponse> {
+  return http
+    .post('api/tool-queue/restart-background', { json: { confirm, reason } })
+    .json<RestartBackgroundResponse>();
+}
+

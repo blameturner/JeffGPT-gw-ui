@@ -244,6 +244,20 @@ export const renameSymbol = (id: number, body: { old: string; new: string; paths
   http.post(`api/projects/${id}/rename?${orgQ()}`, { json: body })
     .json<{ files: { path: string; occurrences: number }[]; file_count: number }>();
 
+// ---- Diagnostics ----
+export interface ProjectsDiag {
+  feature_enabled: boolean;
+  ready: boolean;
+  required_present?: string[];
+  required_missing: string[];
+  optional_present?: string[];
+  optional_missing: string[];
+  error?: string;
+}
+
+export const projectsDiag = () =>
+  http.get('api/projects/_diag', { throwHttpErrors: false }).json<ProjectsDiag>();
+
 // ---- AI flows ----
 export interface ReviewResult {
   summary: string;

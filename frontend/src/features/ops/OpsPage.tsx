@@ -3,8 +3,6 @@ import {
   opsPageApi,
   type OpsConnector,
   type OpsConnectorCall,
-  type OpsResearchArtifact,
-  type OpsResearchArtifactDetail,
   type OpsScheduledJob,
   type OpsScheduledJobHistoryRow,
 } from '../../api/ops/page';
@@ -28,18 +26,19 @@ type Tab =
   | 'control'
   | 'logs'
   | 'stats'
-  | 'integrations'
+  | 'connectors'
   | 'activity'
-  | 'scheduler'
-  | 'research';
+  | 'scheduler';
+// Tabs flow left-to-right roughly in order of "operate now" → "look back".
+// Research artifacts dropped — covered by the dedicated /research route.
+// Integrations + Connector activity stay separate: setup vs runtime calls.
 const TABS: ReadonlyArray<TabDef<Tab>> = [
   { id: 'control', label: 'Control plane' },
   { id: 'logs', label: 'Logs' },
   { id: 'stats', label: 'Stats' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'activity', label: 'Connector activity' },
   { id: 'scheduler', label: 'Scheduler' },
-  { id: 'research', label: 'Research artifacts' },
+  { id: 'connectors', label: 'Connectors' },
+  { id: 'activity', label: 'Activity' },
 ];
 
 export function OpsPage() {
@@ -48,8 +47,8 @@ export function OpsPage() {
   return (
     <div className="h-full flex flex-col bg-bg text-fg font-sans">
       <PageHeader
-        eyebrow="Operations"
-        title="Ops"
+        eyebrow="System"
+        title="Console"
         right={<TabRow tabs={TABS} active={tab} onChange={setTab} size="sm" />}
       />
 
@@ -57,10 +56,9 @@ export function OpsPage() {
         {tab === 'control' && <ControlPlaneTab />}
         {tab === 'logs' && <LogsPage />}
         {tab === 'stats' && <StatsTab />}
-        {tab === 'integrations' && <ConnectorsPage />}
+        {tab === 'connectors' && <ConnectorsPage />}
         {tab === 'activity' && <ConnectorsTab />}
         {tab === 'scheduler' && <SchedulerTab />}
-        {tab === 'research' && <ResearchTab />}
       </div>
     </div>
   );
@@ -417,114 +415,6 @@ function WeeklyGrid({
   );
 }
 
-function ResearchTab() {
-  const [arts, setArts] = useState<OpsResearchArtifact[] | null>(null);
-  const [active, setActive] = useState<OpsResearchArtifactDetail | null>(null);
-
-  useEffect(() => {
-    opsPageApi.researchArtifacts(200).then((r) => setArts(r.artifacts)).catch(() => setArts([]));
-  }, []);
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, { plan_title?: string; items: OpsResearchArtifact[] }>();
-    for (const a of arts ?? []) {
-      const cur = map.get(a.plan_id) ?? { plan_title: a.plan_title, items: [] };
-      cur.items.push(a);
-      map.set(a.plan_id, cur);
-    }
-    return [...map.entries()];
-  }, [arts]);
-
-  return (
-    <div className="px-5 sm:px-8 py-5">
-      {arts == null ? (
-        <div className="text-xs text-muted">Loading…</div>
-      ) : arts.length === 0 ? (
-        <Empty title="no artifacts" />
-      ) : (
-        <div className="space-y-8">
-          {grouped.map(([planId, { plan_title, items }]) => (
-            <section key={planId}>
-              <div className="flex items-baseline justify-between mb-2 gap-3">
-                <h2 className="font-display text-xl tracking-tightest leading-tight">
-                  {plan_title || planId}
-                </h2>
-                <Eyebrow>{items.length} artifacts</Eyebrow>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {items.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() =>
-                      void opsPageApi.researchArtifact(a.id).then(setActive)
-                    }
-                    className="text-left border border-border rounded-md bg-bg p-3 hover:border-fg hover:shadow-card transition-all"
-                  >
-                    <Eyebrow>{a.kind || 'artifact'}</Eyebrow>
-                    <div className="font-display text-sm tracking-tightest leading-tight mt-1 line-clamp-2">
-                      {a.title}
-                    </div>
-                    {a.summary && (
-                      <p className="text-xs text-muted mt-1 line-clamp-2">{a.summary}</p>
-                    )}
-                    <div className="text-[10px] text-muted mt-2 font-mono">
-                      {relTime(a.created_at)}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-
-      <Drawer
-        open={!!active}
-        onClose={() => setActive(null)}
-        width="max-w-2xl"
-        eyebrow={active?.kind || 'artifact'}
-        title={active?.title}
-        meta={active?.created_at ? relTime(active.created_at) : undefined}
-      >
-        {active?.body && (
-          <div className="text-sm whitespace-pre-wrap leading-relaxed text-fg/90">
-            {active.body}
-          </div>
-        )}
-        {active?.url && (
-          <a
-            href={active.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-block mt-4 text-[11px] uppercase tracking-[0.18em] underline hover:no-underline"
-          >
-            {active.url}
-          </a>
-        )}
-        {active?.citations && active.citations.length > 0 && (
-          <div className="mt-6 border-t border-border pt-4">
-            <Eyebrow className="mb-2">Citations</Eyebrow>
-            <ol className="text-xs space-y-1.5 list-decimal pl-5 text-fg/85">
-              {active.citations.map((c) => (
-                <li key={c.id}>
-                  {c.url ? (
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline hover:no-underline"
-                    >
-                      {c.title || c.url}
-                    </a>
-                  ) : (
-                    c.title || c.id
-                  )}
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
-      </Drawer>
-    </div>
-  );
-}
+// Research artifacts moved out of Console — covered by the dedicated
+// /research route. The Ops page is for operating the system, not browsing
+// content.

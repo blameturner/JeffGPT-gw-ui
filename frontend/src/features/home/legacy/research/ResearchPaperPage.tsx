@@ -158,7 +158,7 @@ export function ResearchPaperPage({ plan: initialPlan }: Props) {
     const frontmatter =
       `---\n` +
       `topic: ${plan.topic}\n` +
-      `iterations: ${plan.iterations ?? 0}/${plan.max_iterations ?? 3}\n` +
+      `reviews: ${Math.max(0, (plan.iterations ?? 1) - 1)}\n` +
       `confidence: ${Math.round(score)}%\n` +
       `created: ${plan.created_at}\n` +
       `---\n\n`;
@@ -287,13 +287,19 @@ export function ResearchPaperPage({ plan: initialPlan }: Props) {
           </span>
         </div>
         <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap text-[11px] text-muted">
-          <span>
-            Iterations{' '}
-            <span className="font-mono text-fg">
-              {plan.iterations ?? 0} / {plan.max_iterations ?? 3}
-            </span>
-          </span>
-          <span>·</span>
+          {/* `iterations` used to be 'pass N of max_iterations' under an
+              N-pass synthesis loop that no longer exists. It's now bumped
+              once on initial synthesis and once per user-triggered review,
+              so we surface it as 'Reviews' (initial = 0). */}
+          {plan.iterations != null && plan.iterations > 1 && (
+            <>
+              <span>
+                Reviews{' '}
+                <span className="font-mono text-fg">{Math.max(0, plan.iterations - 1)}</span>
+              </span>
+              <span>·</span>
+            </>
+          )}
           <span>
             Citations <span className="font-mono text-fg">{citationCount}</span>
           </span>

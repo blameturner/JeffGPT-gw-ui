@@ -42,10 +42,18 @@ export interface AdminHueyBlock {
   scheduled?: number;
 }
 
+export interface AdminQueueBackoff {
+  state?: 'clear' | 'chat_active' | 'waiting_for_idle' | string;
+  chat_active?: boolean;
+  idle_seconds?: number;
+  threshold?: number;
+  remaining_s?: number | null;
+}
+
 export interface AdminQueueBlock {
   total?: number;
   by_status?: Record<string, number>;
-  backoff?: { state?: string; remaining_s?: number | null } | null;
+  backoff?: AdminQueueBackoff | null;
 }
 
 export interface AdminSchedulerBlock {

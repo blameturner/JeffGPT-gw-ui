@@ -412,6 +412,21 @@ homeRoute.get('/facts', async (c) => {
   }
 });
 
+homeRoute.post('/caches/drop', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const { orgId } = getAuthContext(c);
+  const payload =
+    body && typeof body === 'object'
+      ? { org_id: (body as { org_id?: number }).org_id ?? orgId, ...body }
+      : { org_id: orgId };
+  try {
+    const res = await harnessClient.post('/home/caches/drop', payload, TIMEOUT);
+    return forwardResponse(res);
+  } catch (err) {
+    return mapHarnessError(err, 'home');
+  }
+});
+
 homeRoute.delete('/facts/:id', async (c) => {
   const id = c.req.param('id');
   const { orgId } = getAuthContext(c);

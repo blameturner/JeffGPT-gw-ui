@@ -99,9 +99,10 @@ export function ResearchTab() {
     const papers = plans.filter((p) => !!p.paper_content).length;
     const scores = plans.map((p) => p.confidence_score ?? 0).filter((s) => s > 0);
     const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-    const iterations = plans.map((p) => p.iterations ?? 0);
-    const avgIter = iterations.length ? Math.round((iterations.reduce((a, b) => a + b, 0) / iterations.length) * 10) / 10 : 0;
-    return { total, completed, papers, avgScore, avgIter };
+    const inFlight = plans.filter((p) =>
+      ['pending', 'planning', 'searching', 'generating', 'synthesizing', 'reviewing', 'revising'].includes(p.status)
+    ).length;
+    return { total, completed, papers, avgScore, inFlight };
   }, [plans]);
 
   const visiblePlans = useMemo(() => {
@@ -113,13 +114,17 @@ export function ResearchTab() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        <Stat label="Plans" value={stats.total} />
-        <Stat label="Completed" value={stats.completed} />
-        <Stat label="Papers" value={stats.papers} />
-        <Stat label="Avg Confidence" value={`${stats.avgScore}%`} />
-        <Stat label="Avg Iterations" value={stats.avgIter} />
-      </div>
+      {/* Stats only render once there's something to count — an empty
+          dashboard reads as 'broken' rather than 'new'. */}
+      {plans.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <Stat label="Plans" value={stats.total} />
+          <Stat label="Completed" value={stats.completed} />
+          <Stat label="Papers" value={stats.papers} />
+          <Stat label="In flight" value={stats.inFlight} />
+          <Stat label="Avg Confidence" value={`${stats.avgScore}%`} />
+        </div>
+      )}
 
       <div className="flex items-end gap-3 flex-wrap">
         <div className="flex-1 min-w-[260px]">

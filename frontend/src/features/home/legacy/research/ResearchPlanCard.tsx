@@ -29,8 +29,10 @@ export function ResearchPlanCard({
   const gap = parseGapReport(plan.gap_report);
   const score = plan.confidence_score ?? gap?.confidence_score ?? 0;
   const threshold = plan.confidence_threshold ?? 80;
-  const iter = plan.iterations ?? 0;
-  const maxIter = plan.max_iterations ?? 3;
+  // iterations = 1 after the initial synthesis; +1 per user-triggered review.
+  // The old "1/3 passes" rendering implied a fixed N-pass loop that the
+  // backend no longer runs.
+  const reviews = Math.max(0, (plan.iterations ?? 1) - 1);
   const hasPaper = !!plan.paper_content;
   const isComplete = plan.status === 'completed';
   const isBusy = busyAction != null;
@@ -60,11 +62,21 @@ export function ResearchPlanCard({
                 )}
                 {plan.status}
               </span>
+              {plan.type === 'insight deep-dive' && (
+                <span
+                  className="px-2 py-0.5 rounded text-[10px] uppercase tracking-[0.1em] bg-sky-50 text-sky-800 border border-sky-200"
+                  title="Triggered from an insight via Deep Dive"
+                >
+                  deep dive
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
-              <span>
-                Iterations <span className="font-mono text-fg">{iter}/{maxIter}</span>
-              </span>
+              {reviews > 0 && (
+                <span>
+                  Reviews <span className="font-mono text-fg">{reviews}</span>
+                </span>
+              )}
               <span>Hypotheses {plan.hypotheses?.length ?? 0}</span>
               <span>Sub-topics {plan.sub_topics?.length ?? 0}</span>
               <span>Queries {plan.queries?.length ?? 0}</span>

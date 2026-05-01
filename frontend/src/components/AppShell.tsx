@@ -45,10 +45,10 @@ const NAV: NavEntry[] = [
     ],
   },
   {
-    label: 'Ops',
+    label: 'System',
     items: [
       { to: '/live', label: 'Live', matchPrefix: '/live' },
-      { to: '/ops', label: 'Ops', matchPrefix: '/ops' },
+      { to: '/ops', label: 'Console', matchPrefix: '/ops' },
     ],
   },
 ];
